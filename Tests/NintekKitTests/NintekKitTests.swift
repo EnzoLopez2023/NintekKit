@@ -219,6 +219,52 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(qs[1].domain, 2)
     }
 
+    // MARK: SM-2 flashcard engine
+
+    func testSM2GotItProgressionMatchesWeb() {
+        let key = FlashcardSM2.storageKey(examId: "PL300")
+        XCTAssertEqual(key, "exam-prep-flashcard-stats:PL300")
+
+        let t0 = 1_000_000_000_000
+        // First "got-it": interval max(2, round(max(1,0)*3)) = 3; ease 0.5*1.15=0.575
+        var stats = FlashcardSM2.record([:], cardId: "c1", rating: .gotIt, now: t0)
+        XCTAssertEqual(stats["c1"]?.interval, 3)
+        XCTAssertEqual(stats["c1"]?.reviews, 1)
+        XCTAssertEqual(stats["c1"]?.ease ?? 0, 0.575, accuracy: 1e-9)
+        XCTAssertEqual(stats["c1"]?.nextReviewAt, t0 + 3 * 86_400_000)
+
+        // Second "got-it": interval max(2, round(3*3)) = 9
+        stats = FlashcardSM2.record(stats, cardId: "c1", rating: .gotIt, now: t0)
+        XCTAssertEqual(stats["c1"]?.interval, 9)
+    }
+
+    func testSM2ForgotResetsIntervalAndDropsEase() {
+        let seeded: FlashcardStatsMap = ["c1": FlashcardStat(cardId: "c1", reviews: 5, interval: 30, ease: 0.8)]
+        let stats = FlashcardSM2.record(seeded, cardId: "c1", rating: .forgot, now: 0)
+        XCTAssertEqual(stats["c1"]?.interval, 1)
+        XCTAssertEqual(stats["c1"]?.ease ?? 0, 0.56, accuracy: 1e-9)   // 0.8*0.7
+    }
+
+    func testSM2DueQueueExcludesNotYetDueAndSortsOverdueFirst() {
+        struct Card: Identifiable { let id: String }
+        let cards = [Card(id: "a"), Card(id: "b"), Card(id: "c")]
+        let now = 1_000_000
+        let stats: FlashcardStatsMap = [
+            "a": FlashcardStat(cardId: "a", nextReviewAt: now + 100),   // future → excluded
+            "b": FlashcardStat(cardId: "b", nextReviewAt: now - 500),   // overdue 500
+            // c: never reviewed → most overdue (Int.max)
+        ]
+        let due = FlashcardSM2.dueQueue(cards, stats: stats, now: now).map(\.id)
+        XCTAssertEqual(due, ["c", "b"])
+    }
+
+    func testFlashcardStatRoundTripsJSON() throws {
+        let stat = FlashcardStat(cardId: "c1", reviews: 2, interval: 9, ease: 0.66, nextReviewAt: 123, lastReviewedAt: 45)
+        let data = try JSONEncoder().encode(["c1": stat])
+        let back = try JSONDecoder().decode(FlashcardStatsMap.self, from: data)
+        XCTAssertEqual(back["c1"], stat)
+    }
+
     func testServerErrorSurfacesMessage() async throws {
         let transport = MockTransport()
         transport.status = 500
