@@ -18,6 +18,10 @@ public struct CairnAPI: Sendable {
         self.client = APIClient(baseURL: baseURL, tokenProvider: tokenProvider, transport: transport)
     }
 
+    /// The backend origin these calls target — used e.g. to build the web-rendered
+    /// study-guide URL for the in-app reader.
+    public var baseURL: URL { client.baseURL }
+
     // MARK: Attempts
 
     /// Most recent exam attempts (server caps at 50, newest first).
