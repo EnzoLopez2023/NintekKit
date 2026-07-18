@@ -102,6 +102,28 @@ public struct AttemptCreated: Decodable, Sendable {
     public let score: Int
 }
 
+/// A frequently-missed question (`GET /api/exam-prep/stats` → weakAreas).
+public struct WeakArea: Codable, Sendable, Identifiable, Equatable {
+    public var id: String { questionId }
+    public let questionId: String
+    public let attempts: Int
+    public let wrongCount: Int
+    public var wrongRate: Double { attempts == 0 ? 0 : Double(wrongCount) / Double(attempts) }
+}
+
+/// Aggregate exam-attempt statistics for the signed-in user. Nullable fields
+/// come back `null` when there are no attempts yet.
+public struct ExamStats: Codable, Sendable, Equatable {
+    public let totalAttempts: Int
+    public let passedAttempts: Int?
+    public let bestScore: Int?
+    public let avgScore: Double?
+    public let avgTime: Double?
+    public let weakAreas: [WeakArea]
+
+    public var hasAttempts: Bool { totalAttempts > 0 }
+}
+
 /// One row of the synced key-value store (`GET /api/exam-prep/progress`). This
 /// is the same `exam-prep-*` data the web app mirrors from localStorage; the
 /// native app reads and writes it through the same endpoints so progress

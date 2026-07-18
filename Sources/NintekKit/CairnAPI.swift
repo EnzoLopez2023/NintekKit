@@ -36,6 +36,11 @@ public struct CairnAPI: Sendable {
         try await client.post("/api/exam-prep/attempts", body: attempt)
     }
 
+    /// Aggregate attempt statistics + weak questions.
+    public func stats() async throws -> ExamStats {
+        try await client.get("/api/exam-prep/stats")
+    }
+
     // MARK: Progress (synced key-value store)
 
     /// Every `exam-prep-*` progress row for the signed-in user.

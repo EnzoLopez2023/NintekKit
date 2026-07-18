@@ -265,6 +265,36 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(back["c1"], stat)
     }
 
+    func testDecodesStatsWithNullsWhenNoAttempts() async throws {
+        let json = """
+        {"totalAttempts":0,"passedAttempts":null,"bestScore":null,"avgScore":null,
+         "avgTime":null,"weakAreas":[]}
+        """
+        let transport = MockTransport()
+        transport.body = Data(json.utf8)
+        let api = makeAPI(transport: transport)
+
+        let stats = try await api.stats()
+        XCTAssertFalse(stats.hasAttempts)
+        XCTAssertNil(stats.bestScore)
+        XCTAssertTrue(stats.weakAreas.isEmpty)
+    }
+
+    func testDecodesStatsWithWeakAreas() async throws {
+        let json = """
+        {"totalAttempts":3,"passedAttempts":1,"bestScore":780,"avgScore":690.5,"avgTime":2100.0,
+         "weakAreas":[{"questionId":"pl300-sm-002","attempts":4,"wrongCount":3}]}
+        """
+        let transport = MockTransport()
+        transport.body = Data(json.utf8)
+        let api = makeAPI(transport: transport)
+
+        let stats = try await api.stats()
+        XCTAssertTrue(stats.hasAttempts)
+        XCTAssertEqual(stats.bestScore, 780)
+        XCTAssertEqual(stats.weakAreas.first?.wrongRate ?? 0, 0.75, accuracy: 1e-9)
+    }
+
     func testServerErrorSurfacesMessage() async throws {
         let transport = MockTransport()
         transport.status = 500
