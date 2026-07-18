@@ -49,4 +49,26 @@ public struct CairnAPI: Sendable {
         let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key
         try await client.delete("/api/exam-prep/progress/\(encoded)", as: EmptyResponse.self)
     }
+
+    // MARK: Content (catalog + per-exam data)
+
+    /// The full exam catalog (all exams' metadata).
+    public func catalog() async throws -> [ExamMeta] {
+        try await client.get("/api/exam-prep/catalog")
+    }
+
+    /// Flashcards for one exam.
+    public func flashcards(examId: String) async throws -> [Flashcard] {
+        try await client.get("/api/exam-prep/exams/\(examId)/flashcards")
+    }
+
+    /// Practice/exam questions for one exam.
+    public func questions(examId: String) async throws -> [Question] {
+        try await client.get("/api/exam-prep/exams/\(examId)/questions")
+    }
+
+    /// Glossary terms for one exam.
+    public func glossary(examId: String) async throws -> [GlossaryEntry] {
+        try await client.get("/api/exam-prep/exams/\(examId)/glossary")
+    }
 }

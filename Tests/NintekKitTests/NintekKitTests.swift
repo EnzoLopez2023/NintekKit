@@ -161,6 +161,64 @@ final class NintekKitTests: XCTestCase {
         }
     }
 
+    // MARK: Content decoding
+
+    func testDecodesCatalog() async throws {
+        let json = """
+        [{"id":"PL300","code":"PL-300","vendor":"Microsoft","title":"Power BI Data Analyst",
+          "tagline":"Model, visualize, analyze.","status":"active","level":"Associate",
+          "domains":[{"label":"Prepare the data","weight":"25–30%"}],
+          "durationMin":100,"passScore":700,"questionCount":116},
+         {"id":"AB900","code":"AB-900","vendor":"Microsoft","title":"Coming soon",
+          "tagline":"tbd","status":"coming-soon"}]
+        """
+        let transport = MockTransport()
+        transport.body = Data(json.utf8)
+        let api = makeAPI(transport: transport)
+
+        let exams = try await api.catalog()
+        XCTAssertEqual(exams.count, 2)
+        XCTAssertTrue(exams[0].isActive)
+        XCTAssertEqual(exams[0].domains?.first?.weight, "25–30%")
+        XCTAssertFalse(exams[1].isActive)
+        XCTAssertNil(exams[1].domains)        // optional fields absent → nil
+        XCTAssertNil(exams[1].questionCount)
+    }
+
+    func testDecodesFlashcards() async throws {
+        let json = """
+        [{"id":"pl300-fc-001","topic":"DAX","front":"Q?","back":"**A**"}]
+        """
+        let transport = MockTransport()
+        transport.body = Data(json.utf8)
+        let api = makeAPI(transport: transport)
+
+        let cards = try await api.flashcards(examId: "PL300")
+        XCTAssertEqual(cards.first?.topic, "DAX")
+        XCTAssertEqual(cards.first?.back, "**A**")
+    }
+
+    func testDecodesQuestionWithUnknownTypeAndOptionalBlocks() async throws {
+        // Unknown `type` must decode (→ .unknown), optional blocks absent → nil.
+        let json = """
+        [{"id":"q1","domain":1,"subdomain":"Storage modes","type":"single","difficulty":"easy",
+          "question":"Which mode?","options":["A","B"],"correctAnswers":[1],
+          "explanation":"because","examTip":"tip"},
+         {"id":"q2","domain":2,"subdomain":"x","type":"drag-drop","difficulty":"hard",
+          "question":"Q","options":[],"correctAnswers":[],"explanation":"e"}]
+        """
+        let transport = MockTransport()
+        transport.body = Data(json.utf8)
+        let api = makeAPI(transport: transport)
+
+        let qs = try await api.questions(examId: "PL300")
+        XCTAssertEqual(qs[0].kind, .single)
+        XCTAssertEqual(qs[0].examTip, "tip")
+        XCTAssertNil(qs[0].match)
+        XCTAssertEqual(qs[1].kind, .unknown)  // future type doesn't break decoding
+        XCTAssertEqual(qs[1].domain, 2)
+    }
+
     func testServerErrorSurfacesMessage() async throws {
         let transport = MockTransport()
         transport.status = 500
