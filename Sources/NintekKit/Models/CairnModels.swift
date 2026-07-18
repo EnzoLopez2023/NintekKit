@@ -1,0 +1,79 @@
+import Foundation
+
+/// One row from `GET /api/exam-prep/attempts`. Field names match the server's
+/// SELECT aliases exactly (camelCase), so no custom CodingKeys are needed.
+/// `passed` arrives as a SQLite integer (0/1); ``isPassed`` exposes it as Bool.
+public struct ExamAttempt: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let mode: String
+    public let score: Int
+    public let totalQuestions: Int
+    public let correctCount: Int
+    public let domain1Score: Int
+    public let domain1Total: Int
+    public let domain2Score: Int
+    public let domain2Total: Int
+    public let passed: Int
+    public let timeSpentSec: Int?
+    public let completedAt: String
+
+    public var isPassed: Bool { passed == 1 }
+
+    public init(
+        id: Int, mode: String, score: Int, totalQuestions: Int, correctCount: Int,
+        domain1Score: Int, domain1Total: Int, domain2Score: Int, domain2Total: Int,
+        passed: Int, timeSpentSec: Int?, completedAt: String
+    ) {
+        self.id = id; self.mode = mode; self.score = score
+        self.totalQuestions = totalQuestions; self.correctCount = correctCount
+        self.domain1Score = domain1Score; self.domain1Total = domain1Total
+        self.domain2Score = domain2Score; self.domain2Total = domain2Total
+        self.passed = passed; self.timeSpentSec = timeSpentSec; self.completedAt = completedAt
+    }
+}
+
+/// One graded question inside an attempt (`GET /api/exam-prep/attempts/:id`).
+public struct QuestionResult: Codable, Identifiable, Sendable, Equatable {
+    public var id: String { questionId }
+    public let questionId: String
+    public let selected: String
+    public let correct: Int
+
+    public var isCorrect: Bool { correct == 1 }
+}
+
+/// A single attempt plus its per-question results.
+public struct AttemptDetail: Codable, Sendable, Equatable {
+    public let id: Int
+    public let mode: String
+    public let score: Int
+    public let totalQuestions: Int
+    public let correctCount: Int
+    public let domain1Score: Int
+    public let domain1Total: Int
+    public let domain2Score: Int
+    public let domain2Total: Int
+    public let passed: Int
+    public let timeSpentSec: Int?
+    public let completedAt: String
+    public let results: [QuestionResult]
+
+    public var isPassed: Bool { passed == 1 }
+}
+
+/// One row of the synced key-value store (`GET /api/exam-prep/progress`). This
+/// is the same `exam-prep-*` data the web app mirrors from localStorage; the
+/// native app reads and writes it through the same endpoints so progress
+/// follows the signed-in user across web and iOS.
+public struct ProgressEntry: Codable, Identifiable, Sendable, Equatable {
+    public var id: String { storageKey }
+    public let storageKey: String
+    public let data: String
+    public let updatedAt: Int
+
+    public init(storageKey: String, data: String, updatedAt: Int) {
+        self.storageKey = storageKey
+        self.data = data
+        self.updatedAt = updatedAt
+    }
+}
