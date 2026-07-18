@@ -61,6 +61,47 @@ public struct AttemptDetail: Codable, Sendable, Equatable {
     public var isPassed: Bool { passed == 1 }
 }
 
+/// Body for `POST /api/exam-prep/attempts` — records a completed exam so it
+/// shows in the user's activity/attempts history.
+public struct NewAttempt: Encodable, Sendable {
+    public struct Result: Encodable, Sendable {
+        public let questionId: String
+        public let selected: [Int]
+        public let correct: Bool
+        public init(questionId: String, selected: [Int], correct: Bool) {
+            self.questionId = questionId; self.selected = selected; self.correct = correct
+        }
+    }
+
+    public let mode: String
+    public let score: Int
+    public let totalQuestions: Int
+    public let correctCount: Int
+    public let domain1Score: Int
+    public let domain1Total: Int
+    public let domain2Score: Int
+    public let domain2Total: Int
+    public let passed: Bool
+    public let timeSpentSec: Int?
+    public let results: [Result]
+
+    public init(mode: String, score: Int, totalQuestions: Int, correctCount: Int,
+                passed: Bool, timeSpentSec: Int?, results: [Result],
+                domain1Score: Int = 0, domain1Total: Int = 0,
+                domain2Score: Int = 0, domain2Total: Int = 0) {
+        self.mode = mode; self.score = score; self.totalQuestions = totalQuestions
+        self.correctCount = correctCount; self.passed = passed; self.timeSpentSec = timeSpentSec
+        self.results = results; self.domain1Score = domain1Score; self.domain1Total = domain1Total
+        self.domain2Score = domain2Score; self.domain2Total = domain2Total
+    }
+}
+
+/// Response from recording an attempt.
+public struct AttemptCreated: Decodable, Sendable {
+    public let id: Int
+    public let score: Int
+}
+
 /// One row of the synced key-value store (`GET /api/exam-prep/progress`). This
 /// is the same `exam-prep-*` data the web app mirrors from localStorage; the
 /// native app reads and writes it through the same endpoints so progress

@@ -30,6 +30,12 @@ public struct CairnAPI: Sendable {
         try await client.get("/api/exam-prep/attempts/\(id)")
     }
 
+    /// Record a completed exam attempt.
+    @discardableResult
+    public func recordAttempt(_ attempt: NewAttempt) async throws -> AttemptCreated {
+        try await client.post("/api/exam-prep/attempts", body: attempt)
+    }
+
     // MARK: Progress (synced key-value store)
 
     /// Every `exam-prep-*` progress row for the signed-in user.
