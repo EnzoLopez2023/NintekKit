@@ -50,7 +50,17 @@ plan that makes Phase 2+ mechanical.
 - **Monetization path** (even if later): StoreKit 2 is Apple-ID-scoped and needs
   no login or server — confirm the chosen architecture doesn't block it.
 - **Security prerequisites:** fix any server auth holes *before* the port
-  (ShopKeep's client-supplied `X-User-OID` was one).
+  (ShopKeep's client-supplied `X-User-OID` was one). **When you deploy an auth
+  change, verify the ACCEPTANCE path end-to-end, not just rejection.** ShopKeep's
+  JWT-hardening deploy passed a "bad tokens → 401" check but nobody confirmed a
+  *real* token → 200, and it took prod down twice: (1) runtime env vars the code
+  requires weren't set in the App Service (`process.exit(1)` → 503); (2) the
+  Entra app registration never actually Exposed the API scope the frontend asks
+  for (`AADSTS500011` → no token → 401s + a login loop). Checklist before shipping
+  an auth change: required runtime env/app-settings exist in the target env; the
+  identity provider config (scopes/Expose-an-API, redirect URIs, audiences)
+  actually exists; and a live end-to-end sign-in returns real data — "committed"
+  ≠ "deployed" ≠ "works".
 
 **0.2 Data-flow audit (exhaustive).** Produce a table:
 - Every **backend route** → who calls it, is it per-user or static.
