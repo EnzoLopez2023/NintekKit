@@ -295,6 +295,31 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(stats.weakAreas.first?.wrongRate ?? 0, 0.75, accuracy: 1e-9)
     }
 
+    func testStudyHistoryAggregatesDrillStats() {
+        let ai901 = """
+        {"q1":{"questionId":"q1","attempts":3,"correct":2,"lastResult":"correct","lastSeenAt":2000},
+         "q2":{"questionId":"q2","attempts":1,"correct":0,"lastSeenAt":1000}}
+        """
+        let pl300 = """
+        {"q9":{"questionId":"q9","attempts":5,"correct":5,"lastSeenAt":9000}}
+        """
+        let rows = [
+            ProgressEntry(storageKey: "exam-prep-drill-stats:AI901", data: ai901, updatedAt: 0),
+            ProgressEntry(storageKey: "exam-prep-drill-stats:PL300", data: pl300, updatedAt: 0),
+            ProgressEntry(storageKey: "exam-prep-reading:AI901", data: "{}", updatedAt: 0), // ignored
+        ]
+        let activity = StudyHistory.activity(from: rows)
+
+        XCTAssertEqual(activity.count, 2)
+        XCTAssertEqual(activity.first?.examId, "PL300")       // most recent (9000)
+        XCTAssertEqual(activity.first?.questionsSeen, 1)
+        let ai = activity.first { $0.examId == "AI901" }
+        XCTAssertEqual(ai?.questionsSeen, 2)
+        XCTAssertEqual(ai?.attempts, 4)
+        XCTAssertEqual(ai?.accuracy ?? 0, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(StudyHistory.totalQuestionsSeen(activity), 3)
+    }
+
     func testServerErrorSurfacesMessage() async throws {
         let transport = MockTransport()
         transport.status = 500
