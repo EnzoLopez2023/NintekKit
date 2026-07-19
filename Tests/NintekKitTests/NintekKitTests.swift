@@ -137,6 +137,59 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(StudyHistory.totalQuestionsSeen(activity), 3)
     }
 
+    // MARK: ShopKeep decoding (snake_case → camelCase)
+
+    private var skDecoder: JSONDecoder {
+        let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase; return d
+    }
+
+    func testDecodesDashboardStats() throws {
+        let json = #"{"total_tools":433,"needs_attention":3,"checked_out":0,"total_value":53976.5}"#
+        let s = try skDecoder.decode(DashboardStats.self, from: Data(json.utf8))
+        XCTAssertEqual(s.totalTools, 433)
+        XCTAssertEqual(s.needsAttention, 3)
+        XCTAssertEqual(s.totalValue, 53976.5, accuracy: 1e-6)
+    }
+
+    func testDecodesToolWithSnakeCaseAndNulls() throws {
+        let json = """
+        [{"id":7,"name":"GRR-RIPPER AIR ULTRA '25","category":"Jigs, Fixtures & Templates",
+          "condition":"good","status":"maintenance","created_at":"2025-11-18 10:00:00",
+          "updated_at":"2025-11-18 10:00:00","brand":"Microjig","model":null,
+          "purchase_price":375.0,"storage_location":null,"sub_location":null,"qty":1,
+          "sku":"HJP","barcode":null,"next_maintenance_date":"2026-06-30","deleted_at":null,
+          "images":[{"id":21,"image_size":48213,"image_type":"image/jpeg"}]}]
+        """
+        let tools = try skDecoder.decode([Tool].self, from: Data(json.utf8))
+        let t = try XCTUnwrap(tools.first)
+        XCTAssertEqual(t.id, 7)
+        XCTAssertEqual(t.brand, "Microjig")
+        XCTAssertNil(t.model)
+        XCTAssertEqual(t.purchasePrice ?? 0, 375.0, accuracy: 1e-6)
+        XCTAssertEqual(t.quantity, 1)
+        XCTAssertEqual(t.toolStatus, .maintenance)
+        XCTAssertEqual(t.toolCondition, .good)
+        XCTAssertEqual(t.firstImage?.imageSize, 48213)
+    }
+
+    func testAlertsAttentionIdsAreDistinctAcrossBuckets() throws {
+        // Same tool can appear in two buckets; ids must dedupe. overdue_checkouts
+        // is a lighter shape than the other five (full tool rows).
+        func tool(_ id: Int) -> String {
+            #"{"id":\#(id),"name":"T\#(id)","category":"C","condition":"good","status":"available","created_at":"x","updated_at":"x"}"#
+        }
+        let json = """
+        {"overdue_maintenance":[\(tool(1)),\(tool(2))],
+         "maintenance_upcoming":[\(tool(2))],
+         "warranty_expired":[],"warranty_expiring":[\(tool(3))],
+         "low_stock":[],
+         "overdue_checkouts":[{"id":9,"name":"Drill","category":"Power","brand":"X","due_date":"2026-01-01"}]}
+        """
+        let alerts = try skDecoder.decode(Alerts.self, from: Data(json.utf8))
+        XCTAssertEqual(alerts.attentionToolIds, [1, 2, 3, 9])
+        XCTAssertEqual(alerts.overdueCheckouts.first?.dueDate, "2026-01-01")
+    }
+
     func testDetailedStatsAggregatesAllSources() {
         let catalog = [
             ExamMeta(id: "AI901", code: "AI-901", vendor: "Microsoft", title: "Azure AI Fundamentals",
