@@ -320,6 +320,51 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(StudyHistory.totalQuestionsSeen(activity), 3)
     }
 
+    func testDetailedStatsAggregatesAllSources() {
+        let catalog = [
+            ExamMeta(id: "AI901", code: "AI-901", vendor: "Microsoft", title: "Azure AI Fundamentals",
+                     tagline: "", status: "active", level: nil, domains: nil,
+                     durationMin: nil, passScore: nil, questionCount: nil),
+        ]
+        let rows = [
+            ProgressEntry(storageKey: "exam-prep-completed:AI901", data: "[\"s1\",\"s2\",\"s3\"]", updatedAt: 0),
+            ProgressEntry(storageKey: "exam-prep-drill-stats:AI901",
+                          data: "{\"q1\":{\"questionId\":\"q1\",\"attempts\":3,\"correct\":3,\"lastSeenAt\":5000},\"q2\":{\"questionId\":\"q2\",\"attempts\":2,\"correct\":1,\"lastSeenAt\":4000}}",
+                          updatedAt: 0),
+            ProgressEntry(storageKey: "exam-prep-analytics:AI901",
+                          data: "[{\"completedAt\":9000,\"scoreScaled\":820,\"perQuestion\":[{\"correct\":true,\"subdomain\":\"Vision\"},{\"correct\":false,\"subdomain\":\"Vision\"}]}]",
+                          updatedAt: 0),
+        ]
+        let stats = StudyStats.build(progress: rows, catalog: catalog)
+
+        XCTAssertEqual(stats.totalSectionsComplete, 3)
+        XCTAssertEqual(stats.totalQuestionsAnswered, 5)         // 3 + 2 answer events
+        let ai = stats.exams.first
+        XCTAssertEqual(ai?.sectionsComplete, 3)
+        XCTAssertEqual(ai?.questionsAnswered, 5)
+        XCTAssertEqual(ai?.drillAccuracy ?? 0, 4.0/5.0, accuracy: 1e-9)   // 4 correct / 5
+        XCTAssertEqual(ai?.bestScaledScore, 820)
+        XCTAssertEqual(ai?.attemptsCount, 1)
+        XCTAssertEqual(stats.bestScaledScore, 820)
+        XCTAssertEqual(ai?.subdomains.first?.subdomain, "Vision")
+        XCTAssertEqual(ai?.subdomains.first?.attempted, 2)
+
+        // Insights payload projection
+        let payload = InsightsPayload(from: stats, force: true)
+        XCTAssertEqual(payload.stats.exams.count, 1)
+        XCTAssertEqual(payload.stats.exams.first?.drillAccuracy, 80)
+    }
+
+    func testInsightsDecodes() throws {
+        let json = """
+        {"studyPlan":"- Do AZ-900\\n- Then AI-901","readiness":[{"examCode":"AI-901","verdict":"close","etaHours":12,"why":"almost"}],"nextStepNudge":"Practice 20 questions.","cached":true}
+        """
+        let insights = try JSONDecoder().decode(Insights.self, from: Data(json.utf8))
+        XCTAssertEqual(insights.readiness.first?.etaHours, 12)
+        XCTAssertEqual(insights.studyPlanLines, ["Do AZ-900", "Then AI-901"])
+        XCTAssertEqual(insights.cached, true)
+    }
+
     func testServerErrorSurfacesMessage() async throws {
         let transport = MockTransport()
         transport.status = 500

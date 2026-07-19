@@ -45,6 +45,11 @@ public struct CairnAPI: Sendable {
         try await client.get("/api/exam-prep/stats")
     }
 
+    /// AI study insights (server proxies Claude; cached 1h, `force` recomputes).
+    public func insights(_ payload: InsightsPayload) async throws -> Insights {
+        try await client.post("/api/exam-prep/insights", body: payload)
+    }
+
     // MARK: Progress (synced key-value store)
 
     /// Every `exam-prep-*` progress row for the signed-in user.
