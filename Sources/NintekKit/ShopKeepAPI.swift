@@ -15,8 +15,10 @@ public struct ShopKeepAPI: Sendable {
                 transport: HTTPTransport = URLSession.shared) {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
         self.client = APIClient(baseURL: baseURL, tokenProvider: tokenProvider,
-                                transport: transport, decoder: decoder)
+                                transport: transport, decoder: decoder, encoder: encoder)
     }
 
     /// Backend origin — used to build authenticated image URLs.
@@ -64,7 +66,66 @@ public struct ShopKeepAPI: Sendable {
         try await client.get("/api/tools/\(id)")
     }
 
+    // MARK: Tool writes
+
+    @discardableResult
+    public func createTool(_ input: ToolInput) async throws -> Tool {
+        try await client.post("/api/tools", body: input)
+    }
+
+    @discardableResult
+    public func updateTool(id: Int, _ input: ToolInput) async throws -> Tool {
+        try await client.put("/api/tools/\(id)", body: input)
+    }
+
+    public func softDeleteTool(id: Int) async throws {
+        try await client.delete("/api/tools/\(id)", as: EmptyResponse.self)
+    }
+
+    public func bulkDeleteTools(ids: [Int]) async throws {
+        struct Body: Encodable { let ids: [Int] }
+        // DELETE with a body — send via the generic client.
+        try await client.deleteWithBody("/api/tools/bulk", body: Body(ids: ids), as: EmptyResponse.self)
+    }
+
+    public func restoreTool(id: Int) async throws {
+        try await client.post("/api/tools/\(id)/restore", body: EmptyBody(), as: EmptyResponse.self)
+    }
+
+    public func permanentlyDeleteTool(id: Int) async throws {
+        try await client.delete("/api/tools/\(id)/permanent", as: EmptyResponse.self)
+    }
+
+    // MARK: Lifecycle
+
+    public func checkOut(id: Int, by name: String, notes: String? = nil, dueDate: String? = nil) async throws {
+        struct Body: Encodable { let checkedOutBy: String; let notes: String?; let dueDate: String? }
+        try await client.post("/api/tools/\(id)/checkout",
+                              body: Body(checkedOutBy: name, notes: notes, dueDate: dueDate), as: EmptyResponse.self)
+    }
+
+    public func checkIn(id: Int) async throws {
+        try await client.post("/api/tools/\(id)/checkin", body: EmptyBody(), as: EmptyResponse.self)
+    }
+
+    public func sendToMaintenance(id: Int, description: String? = nil) async throws {
+        struct Body: Encodable { let description: String? }
+        try await client.post("/api/tools/\(id)/maintenance", body: Body(description: description), as: EmptyResponse.self)
+    }
+
+    public func markSold(id: Int) async throws {
+        try await client.post("/api/tools/\(id)/sold", body: EmptyBody(), as: EmptyResponse.self)
+    }
+
     // MARK: Images
+
+    /// Fetch an image's bytes with the bearer token (native uses the header, not
+    /// the web `?oid=` param).
+    public func imageData(_ image: ToolImage) async throws -> Data {
+        var path = "/api/tools/images/\(image.id)"
+        if let size = image.imageSize { path += "?v=\(size)" }
+        return try await client.getData(path)
+    }
 
     /// Authenticated URL for an image's bytes. Native must attach the bearer
     /// token as a header when loading it (the web `?oid=` param is not used).

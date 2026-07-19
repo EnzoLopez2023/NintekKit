@@ -18,17 +18,20 @@ public struct APIClient: Sendable {
     private let tokenProvider: TokenProvider
     private let transport: HTTPTransport
     private let decoder: JSONDecoder
+    private let encoder: JSONEncoder
 
     public init(
         baseURL: URL,
         tokenProvider: TokenProvider,
         transport: HTTPTransport = URLSession.shared,
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        encoder: JSONEncoder = JSONEncoder()
     ) {
         self.baseURL = baseURL
         self.tokenProvider = tokenProvider
         self.transport = transport
         self.decoder = decoder
+        self.encoder = encoder
     }
 
     // MARK: Requests
@@ -41,19 +44,43 @@ public struct APIClient: Sendable {
     public func put<Body: Encodable, Response: Decodable>(
         _ path: String, body: Body, as type: Response.Type = Response.self
     ) async throws -> Response {
-        try await send(method: "PUT", path: path, body: JSONEncoder().encode(body))
+        try await send(method: "PUT", path: path, body: encoder.encode(body))
     }
 
     @discardableResult
     public func post<Body: Encodable, Response: Decodable>(
         _ path: String, body: Body, as type: Response.Type = Response.self
     ) async throws -> Response {
-        try await send(method: "POST", path: path, body: JSONEncoder().encode(body))
+        try await send(method: "POST", path: path, body: encoder.encode(body))
     }
 
     @discardableResult
     public func delete<Response: Decodable>(_ path: String, as type: Response.Type = Response.self) async throws -> Response {
         try await send(method: "DELETE", path: path, body: nil)
+    }
+
+    /// DELETE with a JSON body (e.g. bulk operations that take `{ ids: [...] }`).
+    @discardableResult
+    public func deleteWithBody<Body: Encodable, Response: Decodable>(
+        _ path: String, body: Body, as type: Response.Type = Response.self
+    ) async throws -> Response {
+        try await send(method: "DELETE", path: path, body: encoder.encode(body))
+    }
+
+    /// Fetch raw bytes (e.g. an image) with the bearer token attached. `path`
+    /// may include a query string. No JSON decoding.
+    public func getData(_ path: String) async throws -> Data {
+        let token = try await tokenProvider.accessToken()
+        let request = makeRequest(method: "GET", path: path, token: token, body: nil)
+        let data: Data, response: URLResponse
+        do { (data, response) = try await transport.data(for: request) }
+        catch { throw APIError.transport(error.localizedDescription) }
+        guard let http = response as? HTTPURLResponse else { throw APIError.transport("Non-HTTP response.") }
+        guard (200...299).contains(http.statusCode) else {
+            if http.statusCode == 401 { throw APIError.unauthorized }
+            throw APIError.http(status: http.statusCode, message: nil)
+        }
+        return data
     }
 
     // MARK: Core
@@ -119,5 +146,11 @@ public struct APIClient: Sendable {
 /// Decodable placeholder for endpoints whose body we don't need (e.g. the
 /// `{ success: true }` responses from progress writes).
 public struct EmptyResponse: Decodable, Sendable {
+    public init() {}
+}
+
+/// Encodable placeholder for POST/PUT routes that take no meaningful body
+/// (checkin, sold, restore) — encodes to `{}`.
+public struct EmptyBody: Encodable, Sendable {
     public init() {}
 }

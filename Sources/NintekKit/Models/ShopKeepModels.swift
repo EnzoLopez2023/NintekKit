@@ -38,6 +38,7 @@ public struct Tool: Codable, Identifiable, Sendable, Equatable {
     public var lowStockThreshold: Int?
     public var deletedAt: String?
     public var images: [ToolImage]?
+    public var documents: [ToolDocument]?
 
     public var quantity: Int { qty ?? 1 }
     public var toolStatus: ToolStatus { ToolStatus(rawValue: status) ?? .unknown }
@@ -68,6 +69,62 @@ public struct ToolImage: Codable, Identifiable, Sendable, Equatable {
     public var imageName: String?
     public var imageType: String?
     public var imageSize: Int?
+}
+
+/// A document attached to a tool (`tool_documents`; label = manual/receipt/
+/// warranty/other). Bytes fetched from `/api/tools/documents/:id`.
+public struct ToolDocument: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public var label: String?
+    public var fileName: String?
+    public var fileType: String?
+    public var uploadedAt: String?
+}
+
+/// Body for creating/updating a tool (`POST`/`PUT /api/tools`). Encoded to
+/// snake_case by ShopKeepAPI. All fields optional except name/category.
+public struct ToolInput: Codable, Sendable, Equatable {
+    public var name: String
+    public var category: String
+    public var condition: String
+    public var status: String
+    public var subCategory: String?
+    public var brand: String?
+    public var model: String?
+    public var storageLocation: String?
+    public var subLocation: String?
+    public var purchaseDate: String?
+    public var purchasePrice: Double?
+    public var qty: Int?
+    public var purchasedFrom: String?
+    public var productUrl: String?
+    public var sku: String?
+    public var barcode: String?
+    public var productDetail: String?
+    public var orderNumber: String?
+    public var notes: String?
+    public var lastMaintained: String?
+    public var warrantyExpires: String?
+    public var maintenanceIntervalDays: Int?
+    public var nextMaintenanceDate: String?
+    public var lowStockThreshold: Int?
+
+    public init(name: String, category: String = "Other", condition: String = "good", status: String = "available") {
+        self.name = name; self.category = category; self.condition = condition; self.status = status
+    }
+
+    /// Prefill from an existing tool (for the edit form).
+    public init(from tool: Tool) {
+        name = tool.name; category = tool.category; condition = tool.condition; status = tool.status
+        subCategory = tool.subCategory; brand = tool.brand; model = tool.model
+        storageLocation = tool.storageLocation; subLocation = tool.subLocation
+        purchaseDate = tool.purchaseDate; purchasePrice = tool.purchasePrice; qty = tool.qty
+        purchasedFrom = tool.purchasedFrom; productUrl = tool.productUrl; sku = tool.sku
+        barcode = tool.barcode; productDetail = tool.productDetail; orderNumber = tool.orderNumber
+        notes = tool.notes; lastMaintained = tool.lastMaintained; warrantyExpires = tool.warrantyExpires
+        maintenanceIntervalDays = tool.maintenanceIntervalDays; nextMaintenanceDate = tool.nextMaintenanceDate
+        lowStockThreshold = tool.lowStockThreshold
+    }
 }
 
 /// Dashboard tiles (`GET /api/stats`).
