@@ -176,6 +176,19 @@ public struct YearSpend: Codable, Identifiable, Sendable, Equatable {
     public let avgPrice: Double
 }
 
+/// One checkout-log row (`GET /api/reports/checkout-history`).
+public struct CheckoutRecord: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let toolId: Int
+    public let toolName: String
+    public var category: String?
+    public var checkedOutBy: String?
+    public var checkedOutAt: String?
+    public var checkedInAt: String?
+    public var durationHours: Double?
+    public var isOut: Bool { checkedInAt == nil }
+}
+
 /// The six alert buckets (`GET /api/alerts`) that feed "Needs Attention".
 public struct Alerts: Codable, Sendable, Equatable {
     public let overdueMaintenance: [Tool]

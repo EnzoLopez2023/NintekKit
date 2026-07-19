@@ -127,6 +127,10 @@ public struct ShopKeepAPI: Sendable {
         try await client.get("/api/reports/spending-by-year")
     }
 
+    public func checkoutHistory(limit: Int = 20) async throws -> [CheckoutRecord] {
+        try await client.get("/api/reports/checkout-history?limit=\(limit)")
+    }
+
     // MARK: Images
 
     /// Fetch an image's bytes with the bearer token (native uses the header, not
