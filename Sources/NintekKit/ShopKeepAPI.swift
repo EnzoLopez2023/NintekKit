@@ -117,6 +117,16 @@ public struct ShopKeepAPI: Sendable {
         try await client.post("/api/tools/\(id)/sold", body: EmptyBody(), as: EmptyResponse.self)
     }
 
+    // MARK: Reports
+
+    public func spendingSummary() async throws -> SpendingSummary {
+        try await client.get("/api/reports/spending-summary")
+    }
+
+    public func spendingByYear() async throws -> [YearSpend] {
+        try await client.get("/api/reports/spending-by-year")
+    }
+
     // MARK: Images
 
     /// Fetch an image's bytes with the bearer token (native uses the header, not

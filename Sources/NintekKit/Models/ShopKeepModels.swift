@@ -154,6 +154,28 @@ public struct OverdueCheckout: Codable, Identifiable, Sendable, Equatable {
     public var dueDate: String?
 }
 
+// MARK: - Reports
+
+/// `GET /api/reports/spending-summary`.
+public struct SpendingSummary: Codable, Sendable, Equatable {
+    public struct TopTool: Codable, Sendable, Equatable { public let name: String?; public let purchasePrice: Double? }
+    public struct TopYear: Codable, Sendable, Equatable { public let year: String?; public let count: Int?; public let total: Double? }
+    public let total: Double
+    public let avgPrice: Double
+    public let topTool: TopTool?
+    public let topYear: TopYear?
+    public let toolsWithPrice: Int
+}
+
+/// One year of spend (`GET /api/reports/spending-by-year`).
+public struct YearSpend: Codable, Identifiable, Sendable, Equatable {
+    public var id: String { year }
+    public let year: String
+    public let count: Int
+    public let total: Double
+    public let avgPrice: Double
+}
+
 /// The six alert buckets (`GET /api/alerts`) that feed "Needs Attention".
 public struct Alerts: Codable, Sendable, Equatable {
     public let overdueMaintenance: [Tool]
