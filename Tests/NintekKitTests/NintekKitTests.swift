@@ -1,169 +1,17 @@
 import XCTest
 @testable import NintekKit
 
-/// Captures the request it's handed and returns a canned response, so the whole
-/// APIClient path runs without a network. `@unchecked Sendable` is fine: tests
-/// drive it serially.
-final class MockTransport: HTTPTransport, @unchecked Sendable {
-    var lastRequest: URLRequest?
-    var status: Int = 200
-    var body: Data = Data()
-    var throwError: Error?
-
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        lastRequest = request
-        if let throwError { throw throwError }
-        let response = HTTPURLResponse(
-            url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
-        )!
-        return (body, response)
-    }
-}
-
+/// NintekKit is now a pure content-model + aggregation + SM-2 library (the HTTP
+/// layer was removed when Cairn went fully local/CloudKit). These tests cover
+/// JSON decoding of the bundled content shapes and the aggregation/SM-2 logic
+/// the app relies on.
 final class NintekKitTests: XCTestCase {
 
-    private func makeAPI(transport: MockTransport, token: String? = "test-token") -> CairnAPI {
-        CairnAPI(
-            baseURL: CairnAPI.productionBaseURL,
-            tokenProvider: StaticTokenProvider(token),
-            transport: transport
-        )
-    }
+    private let decoder = JSONDecoder()
 
-    // MARK: Request construction
+    // MARK: Content decoding (bundled JSON shapes)
 
-    func testRequestResolvesAgainstBaseURLAndAttachesBearer() async throws {
-        let transport = MockTransport()
-        transport.body = Data("[]".utf8)
-        let api = makeAPI(transport: transport)
-
-        _ = try await api.attempts()
-
-        let req = try XCTUnwrap(transport.lastRequest)
-        XCTAssertEqual(req.url?.absoluteString,
-                       "https://app-cairn-prod-lwxhu7jxlrbtu.azurewebsites.net/api/exam-prep/attempts")
-        XCTAssertEqual(req.httpMethod, "GET")
-        XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
-    }
-
-    func testNoTokenOmitsAuthorizationHeader() async throws {
-        let transport = MockTransport()
-        transport.body = Data("[]".utf8)
-        let api = makeAPI(transport: transport, token: nil)
-
-        _ = try await api.progress()
-
-        let req = try XCTUnwrap(transport.lastRequest)
-        XCTAssertNil(req.value(forHTTPHeaderField: "Authorization"))
-    }
-
-    // MARK: Decoding real server shapes
-
-    func testDecodesAttemptsList() async throws {
-        let json = """
-        [{"id":7,"mode":"full","score":82,"totalQuestions":50,"correctCount":41,
-          "domain1Score":20,"domain1Total":25,"domain2Score":21,"domain2Total":25,
-          "passed":1,"timeSpentSec":3120,"completedAt":"2026-07-17 14:05:00"}]
-        """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let attempts = try await api.attempts()
-
-        XCTAssertEqual(attempts.count, 1)
-        let a = try XCTUnwrap(attempts.first)
-        XCTAssertEqual(a.id, 7)
-        XCTAssertEqual(a.score, 82)
-        XCTAssertEqual(a.correctCount, 41)
-        XCTAssertTrue(a.isPassed)
-        XCTAssertEqual(a.timeSpentSec, 3120)
-    }
-
-    func testDecodesAttemptWithNullTimeSpent() async throws {
-        let json = """
-        {"id":9,"mode":"practice","score":60,"totalQuestions":10,"correctCount":6,
-         "domain1Score":3,"domain1Total":5,"domain2Score":3,"domain2Total":5,
-         "passed":0,"timeSpentSec":null,"completedAt":"2026-07-16 09:00:00",
-         "results":[{"questionId":"q1","selected":"B","correct":1},
-                    {"questionId":"q2","selected":"A","correct":0}]}
-        """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let detail = try await api.attempt(id: 9)
-
-        XCTAssertNil(detail.timeSpentSec)
-        XCTAssertFalse(detail.isPassed)
-        XCTAssertEqual(detail.results.count, 2)
-        XCTAssertTrue(detail.results[0].isCorrect)
-        XCTAssertFalse(detail.results[1].isCorrect)
-    }
-
-    func testDecodesProgressRows() async throws {
-        let json = """
-        [{"storageKey":"exam-prep-drill-stats:PL300","data":"{\\"x\\":1}","updatedAt":1752760000000}]
-        """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let rows = try await api.progress()
-
-        XCTAssertEqual(rows.first?.storageKey, "exam-prep-drill-stats:PL300")
-        XCTAssertEqual(rows.first?.updatedAt, 1752760000000)
-    }
-
-    // MARK: Writes
-
-    func testPutProgressSendsKeyAndDataBody() async throws {
-        let transport = MockTransport()
-        transport.body = Data("{\"success\":true}".utf8)
-        let api = makeAPI(transport: transport)
-
-        try await api.putProgress(key: "exam-prep-foo", data: "{\"a\":1}")
-
-        let req = try XCTUnwrap(transport.lastRequest)
-        XCTAssertEqual(req.httpMethod, "PUT")
-        XCTAssertEqual(req.value(forHTTPHeaderField: "Content-Type"), "application/json")
-        let sent = try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: String]
-        XCTAssertEqual(sent?["key"], "exam-prep-foo")
-        XCTAssertEqual(sent?["data"], "{\"a\":1}")
-    }
-
-    func testDeleteProgressPercentEncodesKey() async throws {
-        let transport = MockTransport()
-        transport.body = Data("{\"success\":true}".utf8)
-        let api = makeAPI(transport: transport)
-
-        try await api.deleteProgress(key: "exam-prep-drill-stats:PL300")
-
-        let req = try XCTUnwrap(transport.lastRequest)
-        XCTAssertEqual(req.httpMethod, "DELETE")
-        XCTAssertTrue(req.url?.absoluteString.hasSuffix("exam-prep-drill-stats%3APL300") ?? false,
-                      "colon should be percent-encoded, got \(req.url?.absoluteString ?? "nil")")
-    }
-
-    // MARK: Error mapping
-
-    func testUnauthorizedMapsToAPIError() async throws {
-        let transport = MockTransport()
-        transport.status = 401
-        transport.body = Data("{\"error\":\"Missing bearer token\"}".utf8)
-        let api = makeAPI(transport: transport)
-
-        do {
-            _ = try await api.attempts()
-            XCTFail("expected unauthorized")
-        } catch let error as APIError {
-            XCTAssertTrue(error.isUnauthorized)
-        }
-    }
-
-    // MARK: Content decoding
-
-    func testDecodesCatalog() async throws {
+    func testDecodesCatalog() throws {
         let json = """
         [{"id":"PL300","code":"PL-300","vendor":"Microsoft","title":"Power BI Data Analyst",
           "tagline":"Model, visualize, analyze.","status":"active","level":"Associate",
@@ -172,11 +20,7 @@ final class NintekKitTests: XCTestCase {
          {"id":"AB900","code":"AB-900","vendor":"Microsoft","title":"Coming soon",
           "tagline":"tbd","status":"coming-soon"}]
         """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let exams = try await api.catalog()
+        let exams = try decoder.decode([ExamMeta].self, from: Data(json.utf8))
         XCTAssertEqual(exams.count, 2)
         XCTAssertTrue(exams[0].isActive)
         XCTAssertEqual(exams[0].domains?.first?.weight, "25–30%")
@@ -185,20 +29,16 @@ final class NintekKitTests: XCTestCase {
         XCTAssertNil(exams[1].questionCount)
     }
 
-    func testDecodesFlashcards() async throws {
+    func testDecodesFlashcards() throws {
         let json = """
         [{"id":"pl300-fc-001","topic":"DAX","front":"Q?","back":"**A**"}]
         """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let cards = try await api.flashcards(examId: "PL300")
+        let cards = try decoder.decode([Flashcard].self, from: Data(json.utf8))
         XCTAssertEqual(cards.first?.topic, "DAX")
         XCTAssertEqual(cards.first?.back, "**A**")
     }
 
-    func testDecodesQuestionWithUnknownTypeAndOptionalBlocks() async throws {
+    func testDecodesQuestionWithUnknownTypeAndOptionalBlocks() throws {
         // Unknown `type` must decode (→ .unknown), optional blocks absent → nil.
         let json = """
         [{"id":"q1","domain":1,"subdomain":"Storage modes","type":"single","difficulty":"easy",
@@ -207,16 +47,21 @@ final class NintekKitTests: XCTestCase {
          {"id":"q2","domain":2,"subdomain":"x","type":"drag-drop","difficulty":"hard",
           "question":"Q","options":[],"correctAnswers":[],"explanation":"e"}]
         """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let qs = try await api.questions(examId: "PL300")
+        let qs = try decoder.decode([Question].self, from: Data(json.utf8))
         XCTAssertEqual(qs[0].kind, .single)
         XCTAssertEqual(qs[0].examTip, "tip")
         XCTAssertNil(qs[0].match)
         XCTAssertEqual(qs[1].kind, .unknown)  // future type doesn't break decoding
         XCTAssertEqual(qs[1].domain, 2)
+    }
+
+    func testDecodesProgressRows() throws {
+        let json = """
+        [{"storageKey":"exam-prep-drill-stats:PL300","data":"{\\"x\\":1}","updatedAt":1752760000000}]
+        """
+        let rows = try decoder.decode([ProgressEntry].self, from: Data(json.utf8))
+        XCTAssertEqual(rows.first?.storageKey, "exam-prep-drill-stats:PL300")
+        XCTAssertEqual(rows.first?.updatedAt, 1752760000000)
     }
 
     // MARK: SM-2 flashcard engine
@@ -261,39 +106,11 @@ final class NintekKitTests: XCTestCase {
     func testFlashcardStatRoundTripsJSON() throws {
         let stat = FlashcardStat(cardId: "c1", reviews: 2, interval: 9, ease: 0.66, nextReviewAt: 123, lastReviewedAt: 45)
         let data = try JSONEncoder().encode(["c1": stat])
-        let back = try JSONDecoder().decode(FlashcardStatsMap.self, from: data)
+        let back = try decoder.decode(FlashcardStatsMap.self, from: data)
         XCTAssertEqual(back["c1"], stat)
     }
 
-    func testDecodesStatsWithNullsWhenNoAttempts() async throws {
-        let json = """
-        {"totalAttempts":0,"passedAttempts":null,"bestScore":null,"avgScore":null,
-         "avgTime":null,"weakAreas":[]}
-        """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let stats = try await api.stats()
-        XCTAssertFalse(stats.hasAttempts)
-        XCTAssertNil(stats.bestScore)
-        XCTAssertTrue(stats.weakAreas.isEmpty)
-    }
-
-    func testDecodesStatsWithWeakAreas() async throws {
-        let json = """
-        {"totalAttempts":3,"passedAttempts":1,"bestScore":780,"avgScore":690.5,"avgTime":2100.0,
-         "weakAreas":[{"questionId":"pl300-sm-002","attempts":4,"wrongCount":3}]}
-        """
-        let transport = MockTransport()
-        transport.body = Data(json.utf8)
-        let api = makeAPI(transport: transport)
-
-        let stats = try await api.stats()
-        XCTAssertTrue(stats.hasAttempts)
-        XCTAssertEqual(stats.bestScore, 780)
-        XCTAssertEqual(stats.weakAreas.first?.wrongRate ?? 0, 0.75, accuracy: 1e-9)
-    }
+    // MARK: Aggregation
 
     func testStudyHistoryAggregatesDrillStats() {
         let ai901 = """
@@ -348,35 +165,5 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(stats.bestScaledScore, 820)
         XCTAssertEqual(ai?.subdomains.first?.subdomain, "Vision")
         XCTAssertEqual(ai?.subdomains.first?.attempted, 2)
-
-        // Insights payload projection
-        let payload = InsightsPayload(from: stats, force: true)
-        XCTAssertEqual(payload.stats.exams.count, 1)
-        XCTAssertEqual(payload.stats.exams.first?.drillAccuracy, 80)
-    }
-
-    func testInsightsDecodes() throws {
-        let json = """
-        {"studyPlan":"- Do AZ-900\\n- Then AI-901","readiness":[{"examCode":"AI-901","verdict":"close","etaHours":12,"why":"almost"}],"nextStepNudge":"Practice 20 questions.","cached":true}
-        """
-        let insights = try JSONDecoder().decode(Insights.self, from: Data(json.utf8))
-        XCTAssertEqual(insights.readiness.first?.etaHours, 12)
-        XCTAssertEqual(insights.studyPlanLines, ["Do AZ-900", "Then AI-901"])
-        XCTAssertEqual(insights.cached, true)
-    }
-
-    func testServerErrorSurfacesMessage() async throws {
-        let transport = MockTransport()
-        transport.status = 500
-        transport.body = Data("{\"error\":\"boom\"}".utf8)
-        let api = makeAPI(transport: transport)
-
-        do {
-            _ = try await api.attempts()
-            XCTFail("expected http error")
-        } catch let APIError.http(status, message) {
-            XCTAssertEqual(status, 500)
-            XCTAssertEqual(message, "boom")
-        }
     }
 }

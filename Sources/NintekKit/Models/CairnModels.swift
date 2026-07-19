@@ -1,10 +1,11 @@
 import Foundation
 
-/// One row from `GET /api/exam-prep/attempts`. Field names match the server's
-/// SELECT aliases exactly (camelCase), so no custom CodingKeys are needed.
-/// `passed` arrives as a SQLite integer (0/1); ``isPassed`` exposes it as Bool.
+/// A completed exam attempt. Previously one row of `GET /api/exam-prep/attempts`;
+/// now built from the local SwiftData/CloudKit store. `id` is a stable UUID
+/// string (CloudKit records have no server autoincrement). `passed` is kept as
+/// 0/1 so ``isPassed`` and existing UI stay unchanged.
 public struct ExamAttempt: Codable, Identifiable, Sendable, Equatable {
-    public let id: Int
+    public let id: String
     public let mode: String
     public let score: Int
     public let totalQuestions: Int
@@ -20,7 +21,7 @@ public struct ExamAttempt: Codable, Identifiable, Sendable, Equatable {
     public var isPassed: Bool { passed == 1 }
 
     public init(
-        id: Int, mode: String, score: Int, totalQuestions: Int, correctCount: Int,
+        id: String, mode: String, score: Int, totalQuestions: Int, correctCount: Int,
         domain1Score: Int, domain1Total: Int, domain2Score: Int, domain2Total: Int,
         passed: Int, timeSpentSec: Int?, completedAt: String
     ) {
@@ -109,6 +110,12 @@ public struct WeakArea: Codable, Sendable, Identifiable, Equatable {
     public let attempts: Int
     public let wrongCount: Int
     public var wrongRate: Double { attempts == 0 ? 0 : Double(wrongCount) / Double(attempts) }
+
+    public init(questionId: String, attempts: Int, wrongCount: Int) {
+        self.questionId = questionId
+        self.attempts = attempts
+        self.wrongCount = wrongCount
+    }
 }
 
 /// Aggregate exam-attempt statistics for the signed-in user. Nullable fields
@@ -122,6 +129,16 @@ public struct ExamStats: Codable, Sendable, Equatable {
     public let weakAreas: [WeakArea]
 
     public var hasAttempts: Bool { totalAttempts > 0 }
+
+    public init(totalAttempts: Int, passedAttempts: Int?, bestScore: Int?,
+                avgScore: Double?, avgTime: Double?, weakAreas: [WeakArea]) {
+        self.totalAttempts = totalAttempts
+        self.passedAttempts = passedAttempts
+        self.bestScore = bestScore
+        self.avgScore = avgScore
+        self.avgTime = avgTime
+        self.weakAreas = weakAreas
+    }
 }
 
 /// One row of the synced key-value store (`GET /api/exam-prep/progress`). This

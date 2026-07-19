@@ -8,6 +8,13 @@ public struct DrillQuestionStat: Codable, Sendable {
     public let attempts: Int
     public let correct: Int
     public let lastSeenAt: Int   // epoch ms
+
+    public init(questionId: String, attempts: Int, correct: Int, lastSeenAt: Int) {
+        self.questionId = questionId
+        self.attempts = attempts
+        self.correct = correct
+        self.lastSeenAt = lastSeenAt
+    }
 }
 
 /// Aggregated study activity for one exam, derived from its drill stats.
