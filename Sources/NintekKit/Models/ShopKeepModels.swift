@@ -201,6 +201,17 @@ public struct SKSubLocation: Codable, Identifiable, Sendable, Equatable {
     public let name: String
 }
 
+/// A category with its sub-categories (`GET /api/settings/categories`).
+public struct SKCategory: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let name: String
+    public var subCategories: [SKSubCategory]?
+}
+public struct SKSubCategory: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let name: String
+}
+
 /// One checkout-log row (`GET /api/reports/checkout-history`).
 public struct CheckoutRecord: Codable, Identifiable, Sendable, Equatable {
     public let id: Int

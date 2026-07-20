@@ -204,4 +204,59 @@ public struct ShopKeepAPI: Sendable {
     public func documentData(_ doc: ToolDocument) async throws -> Data {
         try await client.getData("/api/tools/documents/\(doc.id)")
     }
+
+    // MARK: Settings — Categories
+
+    private struct NameBody: Encodable { let name: String }
+
+    public func categories() async throws -> [SKCategory] {
+        try await client.get("/api/settings/categories")
+    }
+    @discardableResult
+    public func createCategory(name: String) async throws -> SKCategory {
+        try await client.post("/api/settings/categories", body: NameBody(name: name))
+    }
+    @discardableResult
+    public func renameCategory(id: Int, name: String) async throws -> SKCategory {
+        try await client.put("/api/settings/categories/\(id)", body: NameBody(name: name))
+    }
+    public func deleteCategory(id: Int) async throws {
+        try await client.delete("/api/settings/categories/\(id)", as: EmptyResponse.self)
+    }
+    @discardableResult
+    public func addSubCategory(categoryId: Int, name: String) async throws -> SKSubCategory {
+        try await client.post("/api/settings/categories/\(categoryId)/subcategories", body: NameBody(name: name))
+    }
+    @discardableResult
+    public func renameSubCategory(id: Int, name: String) async throws -> SKSubCategory {
+        try await client.put("/api/settings/subcategories/\(id)", body: NameBody(name: name))
+    }
+    public func deleteSubCategory(id: Int) async throws {
+        try await client.delete("/api/settings/subcategories/\(id)", as: EmptyResponse.self)
+    }
+
+    // MARK: Settings — Locations
+
+    @discardableResult
+    public func createLocation(name: String) async throws -> SKLocation {
+        try await client.post("/api/settings/locations", body: NameBody(name: name))
+    }
+    @discardableResult
+    public func renameLocation(id: Int, name: String) async throws -> SKLocation {
+        try await client.put("/api/settings/locations/\(id)", body: NameBody(name: name))
+    }
+    public func deleteLocation(id: Int) async throws {
+        try await client.delete("/api/settings/locations/\(id)", as: EmptyResponse.self)
+    }
+    @discardableResult
+    public func addSubLocation(locationId: Int, name: String) async throws -> SKSubLocation {
+        try await client.post("/api/settings/locations/\(locationId)/sublocations", body: NameBody(name: name))
+    }
+    @discardableResult
+    public func renameSubLocation(id: Int, name: String) async throws -> SKSubLocation {
+        try await client.put("/api/settings/sublocations/\(id)", body: NameBody(name: name))
+    }
+    public func deleteSubLocation(id: Int) async throws {
+        try await client.delete("/api/settings/sublocations/\(id)", as: EmptyResponse.self)
+    }
 }
