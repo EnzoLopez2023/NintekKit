@@ -87,6 +87,15 @@ plan that makes Phase 2+ mechanical.
 source: sort order, default selection, empty/loading/error states, number/date
 formatting, notable edge cases.
 
+> **⚠️ Hard-won rule (cost me 3 reworks on ShopKeep): the `.tsx` is the spec, not
+> the screenshot.** Before building a screen, open its React component and
+> enumerate **every** field, section, and chart it renders — then port that list.
+> ShopKeep Reports shipped 2 of ~25 charts, and ToolDetail shipped missing
+> Product Page / Detail / Notes / barcode, each time because I matched a *picture*
+> instead of reading the source. A screenshot/PDF is a visual cross-check; the
+> component source is the source of truth. `grep -nE "Card title=|label:|<Field"`
+> the component to get the full inventory fast.
+
 **0.5 Native thesis.** List the platform capabilities that *justify* this port,
 ranked. These become first-class Phase 3 todos. (Cairn: widgets, haptics, Live
 Activity, App Intents, notifications, macOS. ShopKeep: **VisionKit barcode +
