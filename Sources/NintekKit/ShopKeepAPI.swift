@@ -66,6 +66,11 @@ public struct ShopKeepAPI: Sendable {
         try await client.get("/api/tools/\(id)")
     }
 
+    /// Soft-deleted tools (Trash).
+    public func trash() async throws -> [Tool] {
+        try await client.get("/api/tools/trash")
+    }
+
     // MARK: Tool writes
 
     @discardableResult
