@@ -59,6 +59,13 @@ public struct APIClient: Sendable {
         try await send(method: "DELETE", path: path, body: nil)
     }
 
+    /// POST a pre-encoded JSON body verbatim (bypasses the shared encoder — used
+    /// for endpoints whose keys don't follow the client's casing convention).
+    @discardableResult
+    public func postRawJSON<Response: Decodable>(_ path: String, jsonBody: Data, as type: Response.Type = Response.self) async throws -> Response {
+        try await send(method: "POST", path: path, body: jsonBody)
+    }
+
     /// DELETE with a JSON body (e.g. bulk operations that take `{ ids: [...] }`).
     @discardableResult
     public func deleteWithBody<Body: Encodable, Response: Decodable>(

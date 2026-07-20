@@ -133,6 +133,18 @@ public struct ShopKeepAPI: Sendable {
 
     // MARK: Images
 
+    /// Upload a tool photo. The server expects a camelCase base64 body
+    /// (`imageName`/`imageData`/`imageType`), so this posts raw JSON.
+    public func uploadImage(toolId: Int, imageName: String, jpeg: Data, imageType: String = "image/jpeg") async throws {
+        struct Body: Encodable { let imageName: String; let imageData: String; let imageType: String }
+        let body = Body(imageName: imageName, imageData: jpeg.base64EncodedString(), imageType: imageType)
+        try await client.postRawJSON("/api/tools/\(toolId)/images", jsonBody: JSONEncoder().encode(body), as: EmptyResponse.self)
+    }
+
+    public func deleteImage(imageId: Int) async throws {
+        try await client.delete("/api/tools/images/\(imageId)", as: EmptyResponse.self)
+    }
+
     /// Fetch an image's bytes with the bearer token (native uses the header, not
     /// the web `?oid=` param).
     public func imageData(_ image: ToolImage) async throws -> Data {
