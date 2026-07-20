@@ -131,6 +131,21 @@ public struct ShopKeepAPI: Sendable {
         try await client.get("/api/reports/checkout-history?limit=\(limit)")
     }
 
+    // MARK: Settings
+
+    public func activityLog(limit: Int = 100) async throws -> ActivityResponse {
+        try await client.get("/api/activity-log?limit=\(limit)")
+    }
+
+    public func locations() async throws -> [SKLocation] {
+        try await client.get("/api/settings/locations")
+    }
+
+    /// Authenticated file downloads (bytes) — native writes to a temp file and
+    /// shares. The server generates these (pdfkit / SQLite copy).
+    public func dossierPDF() async throws -> Data { try await client.getData("/api/export/dossier.pdf") }
+    public func databaseBackup() async throws -> Data { try await client.getData("/api/backup/database") }
+
     // MARK: Images
 
     /// Upload a tool photo. The server expects a camelCase base64 body

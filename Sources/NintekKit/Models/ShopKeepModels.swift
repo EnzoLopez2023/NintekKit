@@ -176,6 +176,31 @@ public struct YearSpend: Codable, Identifiable, Sendable, Equatable {
     public let avgPrice: Double
 }
 
+/// One activity-log row (`GET /api/activity-log` → `items`). `details` is
+/// freeform JSON and intentionally not decoded.
+public struct ActivityEntry: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let timestamp: String
+    public let action: String
+    public var toolId: Int?
+    public var toolName: String?
+}
+public struct ActivityResponse: Codable, Sendable, Equatable {
+    public let items: [ActivityEntry]
+    public let total: Int
+}
+
+/// A storage location with its sub-locations (`GET /api/settings/locations`).
+public struct SKLocation: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let name: String
+    public var subLocations: [SKSubLocation]?
+}
+public struct SKSubLocation: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let name: String
+}
+
 /// One checkout-log row (`GET /api/reports/checkout-history`).
 public struct CheckoutRecord: Codable, Identifiable, Sendable, Equatable {
     public let id: Int
