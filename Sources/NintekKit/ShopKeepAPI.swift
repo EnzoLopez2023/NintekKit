@@ -183,4 +183,25 @@ public struct ShopKeepAPI: Sendable {
         }
         return comps?.url ?? baseURL
     }
+
+    // MARK: Documents
+
+    /// Attach a document (manual / receipt / warranty / other). The server
+    /// expects a camelCase base64 body (`docName`/`docData`/`docType`/`docLabel`),
+    /// so this posts raw JSON like the image upload.
+    public func uploadDocument(toolId: Int, docName: String, data: Data,
+                               docType: String, docLabel: String) async throws {
+        struct Body: Encodable { let docName: String; let docData: String; let docType: String; let docLabel: String }
+        let body = Body(docName: docName, docData: data.base64EncodedString(), docType: docType, docLabel: docLabel)
+        try await client.postRawJSON("/api/tools/\(toolId)/documents", jsonBody: JSONEncoder().encode(body), as: EmptyResponse.self)
+    }
+
+    public func deleteDocument(docId: Int) async throws {
+        try await client.delete("/api/tools/documents/\(docId)", as: EmptyResponse.self)
+    }
+
+    /// Fetch a document's bytes with the bearer token (for share / preview).
+    public func documentData(_ doc: ToolDocument) async throws -> Data {
+        try await client.getData("/api/tools/documents/\(doc.id)")
+    }
 }
