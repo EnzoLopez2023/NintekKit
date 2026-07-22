@@ -92,6 +92,22 @@ final class WorkshopModelsTests: XCTestCase {
         XCTAssertFalse(s.purchased)
     }
 
+    /// The shaper LIST omits images/cut_list (detail-only) — they must decode to
+    /// [] rather than throwing keyNotFound (the bug caught on-device 2026-07-22).
+    func testDecodesShaperListRowWithoutImagesOrCutList() throws {
+        let json = """
+        {"id":3,"title":"Inlay Tray","shaper_url":"https://shaper.so/x","description":null,
+         "photo_url":"https://img/x.jpg","materials":[{"name":"Walnut","qty":"1 bd ft"}],
+         "instructions":null,"hero_image_id":null,
+         "created_at":"2026-01-01","updated_at":"2026-01-02"}
+        """
+        let s = try snakeDecoder().decode(ShaperProject.self, from: Data(json.utf8))
+        XCTAssertEqual(s.title, "Inlay Tray")
+        XCTAssertEqual(s.materials.first?.name, "Walnut")
+        XCTAssertTrue(s.images.isEmpty)   // absent key → [], not a throw
+        XCTAssertTrue(s.cutList.isEmpty)
+    }
+
     func testUnknownEnumFallback() throws {
         let json = #"{"status":"archived_v2"}"#
         struct Holder: Decodable { let status: ProjectStatus }

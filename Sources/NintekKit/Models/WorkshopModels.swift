@@ -227,7 +227,9 @@ public struct ShaperMaterial: Codable, Sendable, Equatable {
 }
 
 /// A Shaper CNC project (`GET /api/shaper-projects[/:id]`). List and detail share
-/// one shape; nested `images`/`cutList` are empty on the list query.
+/// one shape, but the **list** query omits `images`/`cut_list` entirely (they're
+/// assembled only on the per-id detail), so those decode as `[]` when absent —
+/// hence the custom initializer. `materials` is defended the same way.
 public struct ShaperProject: Codable, Identifiable, Sendable, Equatable {
     public let id: Int
     public let title: String
@@ -241,6 +243,22 @@ public struct ShaperProject: Codable, Identifiable, Sendable, Equatable {
     public var heroImageId: Int?
     public let createdAt: String
     public let updatedAt: String
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        shaperUrl = try c.decode(String.self, forKey: .shaperUrl)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        photoUrl = try c.decodeIfPresent(String.self, forKey: .photoUrl)
+        materials = try c.decodeIfPresent([ShaperMaterial].self, forKey: .materials) ?? []
+        instructions = try c.decodeIfPresent(String.self, forKey: .instructions)
+        images = try c.decodeIfPresent([WSImage].self, forKey: .images) ?? []
+        cutList = try c.decodeIfPresent([CutListItem].self, forKey: .cutList) ?? []
+        heroImageId = try c.decodeIfPresent(Int.self, forKey: .heroImageId)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        updatedAt = try c.decode(String.self, forKey: .updatedAt)
+    }
 }
 
 // MARK: - Write payloads
