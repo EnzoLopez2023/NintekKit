@@ -112,11 +112,18 @@ public struct APIClient: Sendable {
     /// sends `FormData`, not base64 JSON). Attaches the bearer token and decodes
     /// the JSON response like `send`. Added for Workshop; ShopKeep's routes are
     /// untouched.
+    ///
+    /// When `onProgress` is supplied, the upload runs on a dedicated `URLSession`
+    /// with a delegate that reports fractional progress (`didSendBodyData`) —
+    /// this is the one call that bypasses the injectable `transport` seam, since
+    /// progress reporting is inherently tied to a real `URLSession` upload task.
+    /// Omit `onProgress` (the default) to keep using `transport`, e.g. in tests.
     @discardableResult
     public func postMultipart<Response: Decodable>(
         _ path: String,
         fields: [String: String] = [:],
         file: MultipartFile? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
         as type: Response.Type = Response.self
     ) async throws -> Response {
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -145,11 +152,21 @@ public struct APIClient: Sendable {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = body
 
         let data: Data, response: URLResponse
-        do { (data, response) = try await transport.data(for: request) }
-        catch { throw APIError.transport(error.localizedDescription) }
+        do {
+            if let onProgress {
+                let delegate = UploadProgressDelegate(onProgress: onProgress)
+                let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+                defer { session.finishTasksAndInvalidate() }
+                (data, response) = try await session.upload(for: request, from: body)
+            } else {
+                request.httpBody = body
+                (data, response) = try await transport.data(for: request)
+            }
+        } catch {
+            throw APIError.transport(error.localizedDescription)
+        }
         guard let http = response as? HTTPURLResponse else { throw APIError.transport("Non-HTTP response.") }
         guard (200...299).contains(http.statusCode) else {
             if http.statusCode == 401 { throw APIError.unauthorized }
@@ -217,6 +234,19 @@ public struct APIClient: Sendable {
     private static func serverMessage(from data: Data) -> String? {
         struct ErrorBody: Decodable { let error: String }
         return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error
+    }
+}
+
+/// Reports fractional upload progress (0...1) via `URLSessionTaskDelegate`, for
+/// `APIClient.postMultipart`'s `onProgress` parameter.
+final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let onProgress: @Sendable (Double) -> Void
+    init(onProgress: @escaping @Sendable (Double) -> Void) { self.onProgress = onProgress }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+                    totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }
 

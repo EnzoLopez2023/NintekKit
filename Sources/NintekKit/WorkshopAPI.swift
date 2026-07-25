@@ -65,9 +65,10 @@ public struct WorkshopAPI: Sendable {
 
     /// Upload a sketch/inspiration photo or PDF (multipart `kind` + `file`).
     @discardableResult
-    public func uploadImage(projectId: Int, kind: ImageKind, file: MultipartFile) async throws -> WSCreatedID {
+    public func uploadImage(projectId: Int, kind: ImageKind, file: MultipartFile,
+                            onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> WSCreatedID {
         try await client.postMultipart("/api/projects/\(projectId)/images",
-                                       fields: ["kind": kind.rawValue], file: file)
+                                       fields: ["kind": kind.rawValue], file: file, onProgress: onProgress)
     }
     /// Attach an inspiration image by URL (no upload).
     @discardableResult
@@ -148,9 +149,10 @@ public struct WorkshopAPI: Sendable {
         try await client.post("/api/shaper-projects/\(shaperProjectId)/images", body: KindURLBody(kind: "sketch", url: url))
     }
     @discardableResult
-    public func uploadShaperImage(shaperProjectId: Int, file: MultipartFile) async throws -> WSCreatedID {
+    public func uploadShaperImage(shaperProjectId: Int, file: MultipartFile,
+                                  onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> WSCreatedID {
         try await client.postMultipart("/api/shaper-projects/\(shaperProjectId)/images",
-                                       fields: ["kind": "sketch"], file: file)
+                                       fields: ["kind": "sketch"], file: file, onProgress: onProgress)
     }
     @discardableResult
     public func addShaperCutItem(shaperProjectId: Int, _ item: CutListInput) async throws -> WSCreatedID {
