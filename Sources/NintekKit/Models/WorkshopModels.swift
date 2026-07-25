@@ -107,12 +107,15 @@ public struct WSProjectDetail: Codable, Identifiable, Sendable, Equatable {
     public let toolsNeeded: [String]
     public let images: [WSImage]
     public let cutList: [CutListItem]
-    public let materials: [WSMaterial]
+    // `var` (not `let`): materials/buildLog/finishLog/links are mutated
+    // in-place for optimistic UI updates (toggle purchased, add/remove log
+    // entries and links) ahead of the server round-trip.
+    public var materials: [WSMaterial]
     public let totalCost: Double
     public let partsCount: Int
-    public let buildLog: [BuildLogEntry]
-    public let finishLog: [FinishLogEntry]
-    public let links: [ProjectLink]
+    public var buildLog: [BuildLogEntry]
+    public var finishLog: [FinishLogEntry]
+    public var links: [ProjectLink]
     public let createdAt: String
     public let updatedAt: String
 }
@@ -153,7 +156,9 @@ public struct WSMaterial: Codable, Identifiable, Sendable, Equatable {
     public let name: String
     public var qtyLabel: String?
     public let cost: Double
-    public let purchased: Bool
+    // `var` (not `let`) so callers can flip this optimistically in local state
+    // before the PATCH round-trips, then revert on failure.
+    public var purchased: Bool
     public let sortOrder: Int
 }
 
@@ -199,7 +204,7 @@ public struct ShoppingItem: Codable, Identifiable, Sendable, Equatable {
     public let name: String
     public var qtyLabel: String?
     public let cost: Double
-    public let purchased: Bool
+    public var purchased: Bool
     public let sortOrder: Int
     public let projectTitle: String
 }
