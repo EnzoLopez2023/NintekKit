@@ -167,9 +167,10 @@ public struct WorkshopAPI: Sendable {
     }
     /// Add a build-log entry with an optional photo (multipart `note` + `file?`).
     @discardableResult
-    public func addBuildLogEntry(projectId: Int, note: String, file: MultipartFile? = nil) async throws -> BuildLogEntry {
+    public func addBuildLogEntry(projectId: Int, note: String, file: MultipartFile? = nil,
+                                 onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> BuildLogEntry {
         try await client.postMultipart("/api/projects/\(projectId)/build-log",
-                                       fields: ["note": note], file: file)
+                                       fields: ["note": note], file: file, onProgress: onProgress)
     }
     public func deleteBuildLogEntry(id: Int) async throws {
         try await client.delete("/api/build-log/\(id)", as: EmptyResponse.self)
