@@ -66,6 +66,46 @@ public struct CutPlanResult: Sendable, Equatable {
     public let unplacedPieces: [String]
 }
 
+// MARK: - Rendering helpers (ported from CutPlanSheet.tsx)
+
+/// Warm, muted swatches cycled across distinct part names — matches the web's
+/// `PALETTE` exactly (same hex values) so sheet diagrams look identical.
+public let cutPlanPalette: [String] = [
+    "#C8A882", "#8FB4A8", "#B8916E", "#7A9BB5", "#C4A96B",
+    "#A68B9E", "#6FAF8A", "#C47A72", "#7FAFC4", "#B8A07A",
+]
+
+/// Assigns each distinct part name a stable color, in first-seen order across
+/// all sheets — matches the web's `buildColorMap`.
+public func buildColorMap(_ layouts: [SheetLayout]) -> [String: String] {
+    var map: [String: String] = [:]
+    var idx = 0
+    for layout in layouts {
+        for p in layout.placed where map[p.partName] == nil {
+            map[p.partName] = cutPlanPalette[idx % cutPlanPalette.count]
+            idx += 1
+        }
+    }
+    return map
+}
+
+/// Formats inches as a mixed-number fractional label (nearest 1/8", falling
+/// back to 2-decimal) — matches the web's `fmtDim` exactly, including its
+/// tolerance windows for snapping to a fraction.
+public func fmtDim(_ inches: Double) -> String {
+    let whole = Int(inches.rounded(.down))
+    let frac = inches - Double(whole)
+    if frac < 0.01 { return "\(whole)\"" }
+    let fracs: [(Double, String)] = [
+        (0.125, "⅛"), (0.25, "¼"), (0.375, "⅜"), (0.5, "½"),
+        (0.625, "⅝"), (0.75, "¾"), (0.875, "⅞"),
+    ]
+    if let match = fracs.first(where: { abs(frac - $0.0) < 0.04 }) {
+        return whole > 0 ? "\(whole)\(match.1)\"" : "\(match.1)\""
+    }
+    return String(format: "%.2f\"", inches)
+}
+
 // MARK: - Dimension parser
 
 private let vulgarFractions: [Character: Double] = [
