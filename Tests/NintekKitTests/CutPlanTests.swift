@@ -211,4 +211,33 @@ final class CutPlanTests: XCTestCase {
         XCTAssertEqual(result.totalCuts, 1)
         XCTAssertEqual(result.unplacedPieces, ["Second One"])
     }
+
+    // MARK: fmtDim / buildColorMap (CutPlanSheet.tsx port)
+
+    func testFmtDimWholeNumber() {
+        XCTAssertEqual(fmtDim(24), "24\"")
+    }
+
+    func testFmtDimFraction() {
+        XCTAssertEqual(fmtDim(27.5), "27½\"")
+        XCTAssertEqual(fmtDim(0.75), "¾\"")
+        XCTAssertEqual(fmtDim(3.125), "3⅛\"")
+    }
+
+    func testFmtDimFallsBackToDecimal() {
+        // 27.33 doesn't snap within tolerance of any eighth — falls back to 2dp.
+        XCTAssertEqual(fmtDim(27.33), "27.33\"")
+    }
+
+    func testBuildColorMapAssignsStableFirstSeenOrder() {
+        let layouts = [
+            SheetLayout(sheetIndex: 0, stockId: "s1", sheetLength: 96, sheetWidth: 48, placed: [
+                PlacedPiece(pieceId: "a-0", partName: "Leg", length: 4, width: 4, x: 0, y: 0),
+                PlacedPiece(pieceId: "b-0", partName: "Shelf", length: 20, width: 10, x: 4, y: 0),
+            ], wastePercent: 50),
+        ]
+        let map = buildColorMap(layouts)
+        XCTAssertEqual(map["Leg"], cutPlanPalette[0])
+        XCTAssertEqual(map["Shelf"], cutPlanPalette[1])
+    }
 }
