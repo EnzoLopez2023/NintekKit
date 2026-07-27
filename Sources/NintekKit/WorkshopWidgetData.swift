@@ -93,4 +93,27 @@ public enum WorkshopWidgetStore {
         snapshot.updatedAt = Date()
         save(snapshot)
     }
+
+    // MARK: Interactive-widget hand-off (Phase 7.2)
+
+    /// The widget's "check off" button runs in the extension's own process
+    /// with no app launch and no network — it can't safely authenticate, so
+    /// it just optimistically drops the item from the cached snapshot (for
+    /// instant visual feedback) and records the id here. The app reconciles
+    /// the real, authenticated write the next time it loads (see
+    /// `consumePendingShoppingToggle`).
+    private static let pendingToggleKey = "workshop.widget.pendingShoppingToggleId"
+
+    public static func requestShoppingToggle(itemId: Int) {
+        UserDefaults(suiteName: appGroup)?.set(itemId, forKey: pendingToggleKey)
+    }
+
+    /// Reads and clears the pending toggle, if any — call once when the app
+    /// becomes active so the write actually reaches the server.
+    public static func consumePendingShoppingToggle() -> Int? {
+        guard let ud = UserDefaults(suiteName: appGroup),
+              let id = ud.object(forKey: pendingToggleKey) as? Int else { return nil }
+        ud.removeObject(forKey: pendingToggleKey)
+        return id
+    }
 }
