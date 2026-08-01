@@ -162,5 +162,121 @@ ShopKeep is **not** a Cairn clone — its architecture fork lands differently:
 
 ---
 
+## Part 4 — Tare retrospective: the source is necessary, and not sufficient
+
+Tare is the fourth port and the first with irreplaceable data. Cairn's lesson
+was *the `.tsx` is the spec, not the screenshot.* Tare adds the converse, and it
+cost four bugs to learn: **the source tells you what should be drawn; only the
+screenshot tells you what is.** Three of Tare's four component-level defects
+were invisible to a line-by-line source review *and* to a green test suite, and
+all three lived in components that three earlier screens had already shipped on.
+
+Run both passes on every screen. They find disjoint sets of bugs.
+
+### Verify against the captured reference, never against reasoning about CSS
+
+The Glucose hero clipped a scale label. It was reasoned to be faithful, because
+the web's `viewBox` really does cut the label in half. Wrong: the SVG also
+carries `className="overflow-visible"`, so the label spills legibly into the
+card's padding. One glance at the captured screenshot would have settled it; an
+hour of reading the viewBox arithmetic did not.
+
+**Capture a reference set in Phase 0 and actually open the images.** Reasoning
+about stylesheets is not evidence.
+
+### Pixel-sample rather than eyeball
+
+Two fixes in a row looked right and were not. What settled both was scanning a
+single row of pixels for the card's edge (`PIL`, first column where all channels
+exceed 245) and comparing it with the expected point value times the scale. A
+layout regression that "looked about right" was 5pt where 16pt was intended.
+
+### SwiftUI traps that cost the most
+
+1. **A modifier applied to a multi-child `@ViewBuilder` applies to *each*
+   child.** `content.padding().background()` inside a card component silently
+   renders one card per child once a caller passes two. Always wrap the builder
+   output in a container first:
+   ```swift
+   VStack(alignment: .leading, spacing: 0) { content }
+       .padding(16).background(...)
+   ```
+
+2. **`Canvas` always clips to its bounds.** SVG's `overflow: visible` has no
+   equivalent. Draw into bounds widened by an explicit bleed and re-origin the
+   drawing — and host the oversized canvas in an `.overlay`, because an overlay
+   is laid out against its parent's size and can never widen it.
+
+3. **`.fixedSize()` on a label inside an `HStack` steals the page's padding.**
+   Given an incompressible row, SwiftUI resolves the overflow wherever it can,
+   which may be the ancestor's padding rather than the row. Use
+   `.lineLimit(1) + .minimumScaleFactor(...)` to keep text on one line while
+   staying compressible.
+
+4. **Toast/snackbar overlays must be hoisted out of the `ScrollView`.**
+   Web toast libraries render a fixed-position portal. Attaching
+   `.overlay(alignment: .bottom)` to a screen pins the toast to the *content*,
+   so on a long page the confirmation lands thousands of points below the fold —
+   present in the accessibility tree, invisible to the user. Host one toast
+   surface in the shell, outside the scroll view, and publish to it through the
+   environment.
+
+5. **A `Canvas` cannot be animated by `withAnimation`, or by passing a changing
+   `Double`.** The drawing closure captures its inputs when the body is
+   evaluated, and SwiftUI compares `Canvas` values and reuses the cached
+   drawing. Use `TimelineView(.animation(paused:))`, and hold the animation's
+   start instant in a **reference type** — `TimelineView` refreshes its closure
+   parameter every frame but keeps the captured `self`.
+
+6. **Chart components that clip will eat marker labels.** Charting libraries
+   draw reference-line labels in the reserved top margin and do not clip them.
+   If the port's chart frame clips its plot content, stacked labels vanish
+   without a trace. Draw captions in an unclipped overlay.
+
+### UI-testing lessons
+
+- **A tab bar keeps every route mounted.** Hiding inactive tabs with
+  `.opacity(0)` and `.accessibilityHidden(true)` does *not* remove them from the
+  accessibility tree, so a text query can match a row on a screen that is not
+  displayed. Assert against a control the screen owns, e.g. a count of buttons
+  with a screen-specific identifier.
+- **When an assertion fails, dump `app.debugDescription` and read it.** Never
+  guess at labels. On Tare the dump proved the write had landed and located the
+  toast at y = 5172.7, which is what identified bug 4 above.
+- **A query can match a combined accessibility container *and* its child.** Use
+  `.firstMatch`.
+- **Give test-only timings generous margins.** A single accessibility snapshot
+  of a long page can itself outlast a 2-second toast, so the element the test is
+  looking for expires while the query runs. Scale such dwells up under test.
+- **`xcodebuild -quiet` suppresses "BUILD SUCCEEDED".** Read the result bundle
+  (`xcresulttool get test-results summary`) rather than trusting console output,
+  and `rm -rf` the bundle path first — `-resultBundlePath` fails if it exists.
+
+### Data migration deserves its own gated phase
+
+With irreplaceable data, promote migration ahead of screen parity and gate on
+`export(import(real fixture)) == real fixture`, field-by-field and key-by-key.
+Two things that mattered: the export path must not derive its column list from
+`Object.keys(rows[0])` (a null in the first row silently drops a column for
+every row), and the round trip must be run **on the physical device**, not only
+in the simulator.
+
+Doing it first also pays for itself immediately — the real fixture is what makes
+screen verification meaningful. Half of Tare's Glucose screen sits behind render
+guards a hand-seeded fixture cannot satisfy, so those cards would have shipped
+having never been drawn. Restoring the real export at launch through the app's
+own restore path exercises the importer end to end on every UI test as a side
+effect.
+
+### Port bugs, then fix them — but write them down
+
+Tare's weight history chart drops the most recent weigh-in: it steps a fixed
+86,400,000 ms rather than a calendar day, and the series crosses a DST boundary.
+The port reproduces it deliberately, with a test pinning the defect, so parity
+can be proven before behaviour changes. That is the right order — but it only
+works if every such decision is recorded where the sign-off can see it.
+
+---
+
 *Maintainer note: keep this current after each port — it's the compounding
 value of doing five of these.*
