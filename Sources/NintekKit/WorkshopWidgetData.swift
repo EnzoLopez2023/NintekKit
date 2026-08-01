@@ -96,24 +96,31 @@ public enum WorkshopWidgetStore {
 
     // MARK: Interactive-widget hand-off (Phase 7.2)
 
-    /// The widget's "check off" button runs in the extension's own process
-    /// with no app launch and no network — it can't safely authenticate, so
-    /// it just optimistically drops the item from the cached snapshot (for
-    /// instant visual feedback) and records the id here. The app reconciles
-    /// the real, authenticated write the next time it loads (see
-    /// `consumePendingShoppingToggle`).
-    private static let pendingToggleKey = "workshop.widget.pendingShoppingToggleId"
+    /// The widget's "check off" button (and the Phase 7.9+ shopping Live
+    /// Activity's rows) run in the extension's own process with no app
+    /// launch and no network — they can't safely authenticate, so each tap
+    /// just optimistically drops the item from the cached snapshot (for
+    /// instant visual feedback) and queues the id here. The app reconciles
+    /// the real, authenticated writes the next time it loads (see
+    /// `consumePendingShoppingToggles`). A queue rather than a single slot:
+    /// a shopping-trip Live Activity session can check off several items
+    /// before the app is ever reopened, and a single-slot "last write wins"
+    /// would silently drop every toggle but the last one.
+    private static let pendingToggleKey = "workshop.widget.pendingShoppingToggleIds"
 
     public static func requestShoppingToggle(itemId: Int) {
-        UserDefaults(suiteName: appGroup)?.set(itemId, forKey: pendingToggleKey)
+        guard let ud = UserDefaults(suiteName: appGroup) else { return }
+        var ids = Set(ud.array(forKey: pendingToggleKey) as? [Int] ?? [])
+        ids.insert(itemId)
+        ud.set(Array(ids), forKey: pendingToggleKey)
     }
 
-    /// Reads and clears the pending toggle, if any — call once when the app
-    /// becomes active so the write actually reaches the server.
-    public static func consumePendingShoppingToggle() -> Int? {
+    /// Reads and clears every pending toggle — call once when the app
+    /// becomes active so each write actually reaches the server.
+    public static func consumePendingShoppingToggles() -> [Int] {
         guard let ud = UserDefaults(suiteName: appGroup),
-              let id = ud.object(forKey: pendingToggleKey) as? Int else { return nil }
+              let ids = ud.array(forKey: pendingToggleKey) as? [Int], !ids.isEmpty else { return [] }
         ud.removeObject(forKey: pendingToggleKey)
-        return id
+        return ids
     }
 }
