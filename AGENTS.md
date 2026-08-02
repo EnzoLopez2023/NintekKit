@@ -8,7 +8,9 @@ Dependency-free Swift 6 shared package: shared models, API clients, App Intents,
 
 > Agent sessions run in git worktrees, so relative paths into sibling repos (`../foo/BAR.md`) do **not** resolve. The cross-repo facts below are inlined deliberately. Always link other repos by absolute GitHub URL.
 
-⚠️ **Stale doc:** `azure-infra/STANDARDS.md` §7 and the nintek marketing site both claim this package provides **"design tokens"**. **It does not** — there are no colour, typography or spacing exports. It is **API + models + widget infrastructure only.**
+**Scope: no design tokens.** This package exports **no** colour, typography or spacing values. It provides the API client, shared models, App Intents, and widget / App Group infrastructure **only**.
+
+**If any document or marketing page describes NintekKit as a design-token or theming package, the code is ground truth.**
 
 ## Related surfaces — consumed by exactly four apps
 
