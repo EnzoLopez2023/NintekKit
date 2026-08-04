@@ -10,6 +10,11 @@ let package = Package(
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
+        // Tare's Watch app and its complications consume `TareWidgetSnapshot`
+        // and `TareWatchLogEntry` from here, so the package has to build for the
+        // wrist too. The ActivityKit and AppIntents sources are already behind
+        // `#if os(iOS)` and stay out of the watchOS slice.
+        .watchOS(.v10),
     ],
     products: [
         .library(name: "NintekKit", targets: ["NintekKit"]),
