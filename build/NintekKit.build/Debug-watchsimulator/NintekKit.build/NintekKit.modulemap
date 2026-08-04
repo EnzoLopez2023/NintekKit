@@ -1,4 +1,0 @@
-module NintekKit {
-header "NintekKit-Swift.h"
-export *
-}
