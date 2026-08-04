@@ -49,7 +49,11 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
     /// 0 for mg/dL, 1 for mmol/L.
     public var glucoseDecimals: Int
     public var glucoseBand: GlucoseBand?
-    /// Up to 16 points, oldest first, in display units.
+    /// 30-day average, in display units.
+    public var glucoseAverage30d: Double?
+    /// Estimated A1C from the last 90 days of glucose readings.
+    public var estimatedA1C90d: Double?
+    /// Up to 30 points, oldest first, in display units.
     public var glucoseSpark: [Double]
 
     // MARK: Weight
@@ -66,7 +70,7 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
     public var startWeight: Double?
     /// Signed 30-day change, in display units.
     public var weightDelta30d: Double?
-    /// Up to 16 points, oldest first, in display units.
+    /// Up to 30 points, oldest first, in display units.
     public var weightSpark: [Double]
 
     public var updatedAt: Date
@@ -75,6 +79,7 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
                 medicationName: String? = nil,
                 glucoseValue: Double? = nil, glucoseUnit: String = "mg/dL",
                 glucoseDecimals: Int = 0, glucoseBand: GlucoseBand? = nil,
+                glucoseAverage30d: Double? = nil, estimatedA1C90d: Double? = nil,
                 glucoseSpark: [Double] = [],
                 weightValue: Double? = nil, weightUnit: String = "lbs",
                 goalWeight: Double? = nil, startWeight: Double? = nil,
@@ -87,6 +92,8 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
         self.glucoseUnit = glucoseUnit
         self.glucoseDecimals = glucoseDecimals
         self.glucoseBand = glucoseBand
+        self.glucoseAverage30d = glucoseAverage30d
+        self.estimatedA1C90d = estimatedA1C90d
         self.glucoseSpark = glucoseSpark
         self.weightValue = weightValue
         self.weightUnit = weightUnit
@@ -118,10 +125,11 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
         doseMg: 7.5,
         medicationName: "Ozempic",
         glucoseValue: 94, glucoseUnit: "mg/dL", glucoseDecimals: 0, glucoseBand: .normal,
-        glucoseSpark: [112, 108, 103, 99, 101, 96, 94, 97, 93, 95, 92, 94],
+        glucoseAverage30d: 101, estimatedA1C90d: 5.7,
+        glucoseSpark: [112, 108, 103, 99, 101, 96, 94, 97, 93, 95, 92, 94, 97, 100, 96, 92],
         weightValue: 214.2, weightUnit: "lbs",
         goalWeight: 195, startWeight: 238, weightDelta30d: -4.6,
-        weightSpark: [238, 234, 231, 228, 226, 223, 221, 219, 218, 216, 215, 214.2])
+        weightSpark: [238, 234, 231, 228, 226, 223, 221, 219, 218, 216, 215, 214.2, 213.9, 213.4])
 }
 
 /// Reads and writes ``TareWidgetSnapshot`` in the App Group's shared
