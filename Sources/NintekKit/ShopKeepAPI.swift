@@ -147,9 +147,14 @@ public struct ShopKeepAPI: Sendable {
     }
 
     /// Authenticated file downloads (bytes) — native writes to a temp file and
-    /// shares. The server generates these (pdfkit / SQLite copy).
-    public func dossierPDF() async throws -> Data { try await client.getData("/api/export/dossier.pdf") }
-    public func databaseBackup() async throws -> Data { try await client.getData("/api/backup/database") }
+    /// shares. The server generates these (pdfkit / SQLite copy), so they can
+    /// take a while and are worth reporting progress for.
+    public func dossierPDF(onProgress: (@Sendable (Int64, Int64) -> Void)? = nil) async throws -> Data {
+        try await client.getData("/api/export/dossier.pdf", onProgress: onProgress)
+    }
+    public func databaseBackup(onProgress: (@Sendable (Int64, Int64) -> Void)? = nil) async throws -> Data {
+        try await client.getData("/api/backup/database", onProgress: onProgress)
+    }
 
     // MARK: Images
 

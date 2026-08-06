@@ -91,9 +91,22 @@ public struct APIClient: Sendable {
 
     /// Fetch raw bytes (e.g. an image) with the bearer token attached. `path`
     /// may include a query string. No JSON decoding.
-    public func getData(_ path: String) async throws -> Data {
+    ///
+    /// Supply `onProgress` for large downloads (PDF dossier, database backup) to
+    /// receive `(bytesReceived, bytesExpected)` as the body streams in —
+    /// `bytesExpected` is `0` when the server doesn't send a usable
+    /// `Content-Length`. Like `postMultipart`'s progress path this bypasses the
+    /// injectable `transport` seam, because byte-level progress only exists on a
+    /// real `URLSession` task. Omit it (the default) to keep using `transport`.
+    public func getData(
+        _ path: String,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
+    ) async throws -> Data {
         let token = try await tokenProvider.accessToken()
         let request = makeRequest(method: "GET", path: path, token: token, body: nil)
+        if let onProgress {
+            return try await Self.streamData(request, onProgress: onProgress)
+        }
         let data: Data, response: URLResponse
         do { (data, response) = try await transport.data(for: request) }
         catch { throw APIError.transport(error.localizedDescription) }
@@ -103,6 +116,27 @@ public struct APIClient: Sendable {
             throw APIError.http(status: http.statusCode, message: nil)
         }
         return data
+    }
+
+    /// Runs `request` on a dedicated session whose delegate accumulates the body
+    /// and reports progress. The session is invalidated once the task finishes so
+    /// the delegate (and its retain cycle) is released.
+    private static func streamData(
+        _ request: URLRequest,
+        onProgress: @escaping @Sendable (Int64, Int64) -> Void
+    ) async throws -> Data {
+        let delegate = DownloadProgressDelegate(onProgress: onProgress)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let task = session.dataTask(with: request)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                delegate.attach(continuation)
+                task.resume()
+            }
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     // MARK: Multipart
@@ -234,6 +268,74 @@ public struct APIClient: Sendable {
     private static func serverMessage(from data: Data) -> String? {
         struct ErrorBody: Decodable { let error: String }
         return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error
+    }
+}
+
+/// Accumulates a response body while reporting `(received, expected)` byte
+/// counts, for `APIClient.getData`'s `onProgress` parameter. A plain
+/// `URLSession.data(for:)` gives no progress at all, which is why the multi-MB
+/// dossier/backup downloads looked hung.
+///
+/// `URLSession` calls these on a serial delegate queue, so the mutable state is
+/// only touched from one place at a time; the lock is belt-and-braces for the
+/// continuation, which must be resumed exactly once.
+final class DownloadProgressDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let onProgress: @Sendable (Int64, Int64) -> Void
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var finished = false
+    private var buffer = Data()
+    private var expected: Int64 = 0
+    private var status = 0
+
+    init(onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func attach(_ continuation: CheckedContinuation<Data, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // -1 means "unknown"; a gzipped body also under-reports, so the UI must
+        // tolerate received > expected.
+        expected = max(0, response.expectedContentLength)
+        buffer.reserveCapacity(Int(expected))
+        onProgress(0, expected)
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        buffer.append(data)
+        onProgress(Int64(buffer.count), expected)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            let cancelled = (error as? URLError)?.code == .cancelled
+            let mapped: Error = cancelled ? CancellationError() : APIError.transport(error.localizedDescription)
+            finish(.failure(mapped))
+            return
+        }
+        guard status != 0 else { return finish(.failure(APIError.transport("Non-HTTP response."))) }
+        guard (200...299).contains(status) else {
+            let failure: APIError = status == 401 ? .unauthorized : .http(status: status, message: nil)
+            return finish(.failure(failure))
+        }
+        onProgress(Int64(buffer.count), Int64(buffer.count))
+        finish(.success(buffer))
+    }
+
+    private func finish(_ result: Result<Data, Error>) {
+        lock.lock()
+        let pending = finished ? nil : continuation
+        finished = true
+        continuation = nil
+        lock.unlock()
+        pending?.resume(with: result)
     }
 }
 
