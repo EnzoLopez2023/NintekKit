@@ -73,6 +73,27 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
     /// Up to 30 points, oldest first, in display units.
     public var weightSpark: [Double]
 
+    // MARK: Steps
+
+    /// Today's step total, as HealthKit reported it when the app last ran.
+    ///
+    /// Unlike the dose countdown this **cannot** be recomputed on the other
+    /// side of the boundary: neither widget extension reads HealthKit, so the
+    /// figure is only as fresh as the last publish. `stepsUpdatedAt` is carried
+    /// with it so a surface that has room can say how old it is rather than
+    /// presenting a stale count as current.
+    public var stepsToday: Double?
+    /// Mean over *completed* days in the published week — today excluded,
+    /// because a day that is still accumulating drags the average down and the
+    /// comparison it invites is not one anybody is making at breakfast.
+    public var stepsAverage7d: Double?
+    /// One total per day, oldest first, today last. Seven entries when the app
+    /// has published, empty otherwise.
+    public var stepsSpark: [Double]
+    /// When the step figures above were read. `nil` when Health sync has never
+    /// been on, which is also the state that leaves the others nil.
+    public var stepsUpdatedAt: Date?
+
     public var updatedAt: Date
 
     public init(lastInjectionAt: Date? = nil, doseMg: Double? = nil,
@@ -84,6 +105,8 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
                 weightValue: Double? = nil, weightUnit: String = "lbs",
                 goalWeight: Double? = nil, startWeight: Double? = nil,
                 weightDelta30d: Double? = nil, weightSpark: [Double] = [],
+                stepsToday: Double? = nil, stepsAverage7d: Double? = nil,
+                stepsSpark: [Double] = [], stepsUpdatedAt: Date? = nil,
                 updatedAt: Date = Date()) {
         self.lastInjectionAt = lastInjectionAt
         self.doseMg = doseMg
@@ -101,12 +124,58 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
         self.startWeight = startWeight
         self.weightDelta30d = weightDelta30d
         self.weightSpark = weightSpark
+        self.stepsToday = stepsToday
+        self.stepsAverage7d = stepsAverage7d
+        self.stepsSpark = stepsSpark
+        self.stepsUpdatedAt = stepsUpdatedAt
         self.updatedAt = updatedAt
     }
 
     /// Every field empty — what a widget shows before the app has ever
     /// published, and what `clear()` writes.
     public static let empty = TareWidgetSnapshot()
+
+    /// Decodes tolerantly, so a payload written by an older build still loads.
+    ///
+    /// The synthesised decoder would do the right thing for the optionals and
+    /// the wrong thing for everything else: a missing key for a non-optional
+    /// `[Double]` or `String` throws, and one thrown error fails the *whole*
+    /// snapshot rather than the one field. That is how adding a spark array
+    /// blanks every widget and complication on the device until the app is next
+    /// opened — and on the watch, until the phone app is next opened, which
+    /// could be days.
+    ///
+    /// So every field is read with `decodeIfPresent` against the same default
+    /// the initialiser uses. Adding a field stays a one-line change with no
+    /// version bump, which is the property the App Group hand-off is supposed
+    /// to have.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) throws -> T {
+            try c.decodeIfPresent(T.self, forKey: key) ?? fallback
+        }
+        lastInjectionAt = try c.decodeIfPresent(Date.self, forKey: .lastInjectionAt)
+        doseMg = try c.decodeIfPresent(Double.self, forKey: .doseMg)
+        medicationName = try c.decodeIfPresent(String.self, forKey: .medicationName)
+        glucoseValue = try c.decodeIfPresent(Double.self, forKey: .glucoseValue)
+        glucoseUnit = try value(.glucoseUnit, "mg/dL")
+        glucoseDecimals = try value(.glucoseDecimals, 0)
+        glucoseBand = try c.decodeIfPresent(GlucoseBand.self, forKey: .glucoseBand)
+        glucoseAverage30d = try c.decodeIfPresent(Double.self, forKey: .glucoseAverage30d)
+        estimatedA1C90d = try c.decodeIfPresent(Double.self, forKey: .estimatedA1C90d)
+        glucoseSpark = try value(.glucoseSpark, [])
+        weightValue = try c.decodeIfPresent(Double.self, forKey: .weightValue)
+        weightUnit = try value(.weightUnit, "lbs")
+        goalWeight = try c.decodeIfPresent(Double.self, forKey: .goalWeight)
+        startWeight = try c.decodeIfPresent(Double.self, forKey: .startWeight)
+        weightDelta30d = try c.decodeIfPresent(Double.self, forKey: .weightDelta30d)
+        weightSpark = try value(.weightSpark, [])
+        stepsToday = try c.decodeIfPresent(Double.self, forKey: .stepsToday)
+        stepsAverage7d = try c.decodeIfPresent(Double.self, forKey: .stepsAverage7d)
+        stepsSpark = try value(.stepsSpark, [])
+        stepsUpdatedAt = try c.decodeIfPresent(Date.self, forKey: .stepsUpdatedAt)
+        updatedAt = try value(.updatedAt, Date(timeIntervalSince1970: 0))
+    }
 
     /// Fraction of the journey from `startWeight` to `goalWeight` completed,
     /// clamped to 0...1. `nil` unless all three weights are present and the
@@ -129,7 +198,25 @@ public struct TareWidgetSnapshot: Codable, Sendable, Equatable {
         glucoseSpark: [112, 108, 103, 99, 101, 96, 94, 97, 93, 95, 92, 94, 97, 100, 96, 92],
         weightValue: 214.2, weightUnit: "lbs",
         goalWeight: 195, startWeight: 238, weightDelta30d: -4.6,
-        weightSpark: [238, 234, 231, 228, 226, 223, 221, 219, 218, 216, 215, 214.2, 213.9, 213.4])
+        weightSpark: [238, 234, 231, 228, 226, 223, 221, 219, 218, 216, 215, 214.2, 213.9, 213.4],
+        stepsToday: 6482, stepsAverage7d: 8140,
+        stepsSpark: [7420, 9130, 6890, 10240, 8010, 7150, 6482],
+        stepsUpdatedAt: Date())
+
+    /// Carries the step slice of `previous` onto this snapshot.
+    ///
+    /// Steps arrive on their own asynchronous path — HealthKit cannot be read
+    /// synchronously, and the publish that follows a logged weight has no
+    /// figures for them. Without this, every ordinary publish would blank the
+    /// steps complication until the next HealthKit read landed, so a face
+    /// would flicker to "—" each time the user recorded anything at all.
+    public mutating func carryStepsForward(from previous: TareWidgetSnapshot?) {
+        guard let previous else { return }
+        stepsToday = previous.stepsToday
+        stepsAverage7d = previous.stepsAverage7d
+        stepsSpark = previous.stepsSpark
+        stepsUpdatedAt = previous.stepsUpdatedAt
+    }
 }
 
 /// Reads and writes ``TareWidgetSnapshot`` in the App Group's shared
