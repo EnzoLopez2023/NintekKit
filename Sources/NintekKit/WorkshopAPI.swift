@@ -31,6 +31,15 @@ public struct WorkshopAPI: Sendable {
     /// Backend origin — used to build image URLs.
     public var baseURL: URL { client.baseURL }
 
+    // MARK: Account
+
+    /// Permanently delete the authenticated user's Workshop account and all
+    /// user-owned data. The backend derives the account exclusively from the
+    /// bearer token; there is deliberately no user-id parameter.
+    public func deleteAccount() async throws {
+        try await client.delete("/api/account", as: EmptyResponse.self)
+    }
+
     // MARK: Projects
 
     public func listProjects() async throws -> [WSProject] {
