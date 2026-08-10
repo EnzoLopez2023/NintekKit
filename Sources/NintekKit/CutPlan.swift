@@ -139,7 +139,8 @@ public func parseInches(_ raw: String?) -> Double? {
         for i in 0..<m.numberOfRanges {
             let r = m.range(at: i)
             if r.location == NSNotFound { groups.append("") }
-            else { groups.append(String(s[Range(r, in: s)!])) }
+            else if let range = Range(r, in: s) { groups.append(String(s[range])) }
+            else { groups.append("") }
         }
         return groups
     }

@@ -26,10 +26,10 @@ extension APIError: LocalizedError {
             return message.map { "Server error \(status): \($0)" } ?? "Server error \(status)."
         case .unauthorized:
             return "Your session has expired. Please sign in again."
-        case .decoding(let detail):
-            return "Unexpected response from the server. (\(detail))"
-        case .transport(let detail):
-            return "Couldn't reach the server. (\(detail))"
+        case .decoding:
+            return "The app received an unexpected response. Please try again."
+        case .transport:
+            return "Couldn't reach the service. Check your connection and try again."
         }
     }
 }
