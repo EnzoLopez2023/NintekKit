@@ -264,4 +264,30 @@ public struct ShopKeepAPI: Sendable {
     public func deleteSubLocation(id: Int) async throws {
         try await client.delete("/api/settings/sublocations/\(id)", as: EmptyResponse.self)
     }
+
+    // MARK: Settings — Favorite suppliers
+
+    private struct SupplierBody: Encodable {
+        let name: String
+        let url: String
+    }
+
+    public func suppliers() async throws -> [FavoriteSupplier] {
+        try await client.get("/api/settings/suppliers")
+    }
+    @discardableResult
+    public func createSupplier(name: String, url: String) async throws -> FavoriteSupplier {
+        try await client.post("/api/settings/suppliers", body: SupplierBody(name: name, url: url))
+    }
+    @discardableResult
+    public func updateSupplier(id: Int, name: String, url: String) async throws -> FavoriteSupplier {
+        try await client.put("/api/settings/suppliers/\(id)", body: SupplierBody(name: name, url: url))
+    }
+    public func deleteSupplier(id: Int) async throws {
+        try await client.delete("/api/settings/suppliers/\(id)", as: EmptyResponse.self)
+    }
+    public func reorderSuppliers(ids: [Int]) async throws {
+        struct Body: Encodable { let ids: [Int] }
+        try await client.put("/api/settings/suppliers/reorder", body: Body(ids: ids), as: EmptyResponse.self)
+    }
 }

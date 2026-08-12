@@ -109,7 +109,7 @@ public struct ToolInput: Codable, Sendable, Equatable {
     public var nextMaintenanceDate: String?
     public var lowStockThreshold: Int?
 
-    public init(name: String, category: String = "Other", condition: String = "good", status: String = "available") {
+    public init(name: String, category: String = "", condition: String = "good", status: String = "available") {
         self.name = name; self.category = category; self.condition = condition; self.status = status
     }
 
@@ -210,6 +210,14 @@ public struct SKCategory: Codable, Identifiable, Sendable, Equatable {
 public struct SKSubCategory: Codable, Identifiable, Sendable, Equatable {
     public let id: Int
     public let name: String
+}
+
+/// A user-managed external supplier link shown on the dashboard.
+public struct FavoriteSupplier: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let name: String
+    public let url: String
+    public let sortOrder: Int
 }
 
 /// One checkout-log row (`GET /api/reports/checkout-history`).

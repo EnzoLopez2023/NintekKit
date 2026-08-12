@@ -172,6 +172,10 @@ final class NintekKitTests: XCTestCase {
         XCTAssertEqual(t.firstImage?.imageSize, 48213)
     }
 
+    func testNewToolInputDoesNotAssumeOtherCategory() {
+        XCTAssertEqual(ToolInput(name: "Router").category, "")
+    }
+
     func testAlertsAttentionIdsAreDistinctAcrossBuckets() throws {
         // Same tool can appear in two buckets; ids must dedupe. overdue_checkouts
         // is a lighter shape than the other five (full tool rows).
@@ -188,6 +192,17 @@ final class NintekKitTests: XCTestCase {
         let alerts = try skDecoder.decode(Alerts.self, from: Data(json.utf8))
         XCTAssertEqual(alerts.attentionToolIds, [1, 2, 3, 9])
         XCTAssertEqual(alerts.overdueCheckouts.first?.dueDate, "2026-01-01")
+    }
+
+    func testDecodesFavoriteSuppliers() throws {
+        let json = """
+        [{"id":4,"name":"Lee Valley","url":"https://www.leevalley.com/","sort_order":2}]
+        """
+        let suppliers = try skDecoder.decode([FavoriteSupplier].self, from: Data(json.utf8))
+        XCTAssertEqual(suppliers, [
+            FavoriteSupplier(id: 4, name: "Lee Valley",
+                             url: "https://www.leevalley.com/", sortOrder: 2)
+        ])
     }
 
     func testDetailedStatsAggregatesAllSources() {
