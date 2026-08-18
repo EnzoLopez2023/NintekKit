@@ -1,7 +1,7 @@
 import Foundation
 
-// Comprehensive per-exam study stats, aggregated from the synced progress keys
-// exactly like the web app's useDetailedStats:
+// Comprehensive per-exam study stats aggregated from Cairn's local progress
+// keys, matching the web-authored content semantics:
 //   exam-prep-completed:<id>    → array of completed section ids
 //   exam-prep-drill-stats:<id>  → { questionId: DrillQuestionStat }
 //   exam-prep-analytics:<id>    → [SandboxAttempt] (local sandbox history)

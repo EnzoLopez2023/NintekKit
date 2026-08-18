@@ -3,8 +3,8 @@ import ActivityKit
 import Foundation
 
 /// Shared definition for the Exam Sandbox Live Activity (lock screen + Dynamic
-/// Island). The app starts/ends it; the widget extension renders it. iOS-only —
-/// guarded so NintekKit still builds on macOS.
+/// Island). The app starts/ends it; the widget extension renders it. iOS-only,
+/// guarded so the package still builds on macOS.
 public struct ExamActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         public var endDate: Date

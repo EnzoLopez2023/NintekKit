@@ -1,8 +1,7 @@
 import Foundation
 
-/// One question's drill record, as stored in the synced `exam-prep-drill-stats:`
-/// keys. Only the fields we need are decoded; the web app stores more (SM-2
-/// state, confidence) which is ignored here.
+/// One question's drill record, as stored in local `exam-prep-drill-stats:`
+/// progress. Only the fields needed for aggregation are decoded.
 public struct DrillQuestionStat: Codable, Sendable {
     public let questionId: String
     public let attempts: Int
@@ -30,8 +29,7 @@ public struct ExamActivity: Sendable, Identifiable, Equatable {
     public var lastStudied: Date { Date(timeIntervalSince1970: Double(lastSeenAt) / 1000) }
 }
 
-/// Derives the user's real study history from the synced progress rows — the
-/// drill activity the web app records as you answer practice questions.
+/// Derives the user's study history from locally stored progress rows.
 public enum StudyHistory {
     static let drillPrefix = "exam-prep-drill-stats:"
 

@@ -1,8 +1,7 @@
 import Foundation
 
 /// SM-2 spaced-repetition state for one flashcard. Field names + semantics match
-/// the web app's `FlashcardStat` exactly so the two clients read and write the
-/// same synced `exam-prep-flashcard-stats:<examId>` progress key.
+/// the web app's `FlashcardStat` so scheduling behavior remains consistent.
 public struct FlashcardStat: Codable, Sendable, Equatable {
     public let cardId: String
     public var reviews: Int
@@ -24,7 +23,7 @@ public enum FlashcardRating: String, Sendable, CaseIterable {
     case gotIt = "got-it"
 }
 
-/// Map of cardId → stat, exactly as serialized in the progress store.
+/// Map of cardId to stat, exactly as serialized in the local progress store.
 public typealias FlashcardStatsMap = [String: FlashcardStat]
 
 /// The SM-2 engine, ported 1:1 from the web app's `recordFlashcardRating` so

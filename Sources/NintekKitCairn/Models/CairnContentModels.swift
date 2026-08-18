@@ -1,9 +1,9 @@
 import Foundation
 
-// Exam content, served by the backend content API (extracted from the web
-// frontend). Field names match the JSON exactly.
+// Exam content decoded from Cairn's bundled JSON. Field names match the shared
+// web-authored content exactly.
 
-/// One exam in the catalog (`GET /api/exam-prep/catalog`).
+/// One exam in the bundled catalog.
 public struct ExamMeta: Codable, Identifiable, Sendable, Equatable {
     public struct Domain: Codable, Sendable, Equatable {
         public let label: String
@@ -25,8 +25,7 @@ public struct ExamMeta: Codable, Identifiable, Sendable, Equatable {
     public var isActive: Bool { status == "active" }
 }
 
-/// A flashcard (`GET /api/exam-prep/exams/:id/flashcards`). `front`/`back` are
-/// Markdown strings.
+/// A bundled flashcard. `front` and `back` are Markdown strings.
 public struct Flashcard: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public let front: String
@@ -34,7 +33,7 @@ public struct Flashcard: Codable, Identifiable, Sendable, Equatable {
     public let topic: String
 }
 
-/// A glossary term (`GET /api/exam-prep/exams/:id/glossary`).
+/// A bundled glossary term.
 public struct GlossaryEntry: Codable, Identifiable, Sendable, Equatable {
     public var id: String { term }
     public let term: String
@@ -74,9 +73,8 @@ public struct CaseStudyData: Codable, Sendable, Equatable {
     public let subQuestions: [CaseSubQuestion]
 }
 
-/// A practice/exam question (`GET /api/exam-prep/exams/:id/questions`). `type`
-/// and `difficulty` are kept as strings so an unrecognized value from newer
-/// content never fails decoding; ``QuestionKind`` exposes a typed view.
+/// A bundled practice/exam question. `type` and `difficulty` stay as strings so
+/// newer content never fails decoding; ``QuestionKind`` exposes a typed view.
 public struct Question: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public let domain: Int

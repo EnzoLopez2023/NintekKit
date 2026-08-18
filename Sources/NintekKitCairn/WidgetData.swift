@@ -1,6 +1,6 @@
 import Foundation
 
-/// The small snapshot the app publishes for its home-screen widget. Written by
+/// The local snapshot the app publishes for its home-screen widget. Written by
 /// the app after study actions, read by the widget extension — shared across the
 /// process boundary via an App Group.
 public struct WidgetData: Codable, Sendable, Equatable {

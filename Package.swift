@@ -1,10 +1,9 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// NintekKit — shared foundation for Enzo's native apps (Cairn first, then
-// ShopKeep, Tare, …). Deliberately dependency-free: the HTTP + auth-token
-// seams are protocols, so platform SDKs like MSAL live in the app target and
-// this package stays buildable and testable headlessly on any platform.
+// NintekKit — dependency-free shared infrastructure for Enzo's native apps.
+// Cairn links the local-only NintekKitCairn product; the original NintekKit
+// product remains the source-compatible aggregate for existing consumers.
 let package = Package(
     name: "NintekKit",
     platforms: [
@@ -18,9 +17,15 @@ let package = Package(
     ],
     products: [
         .library(name: "NintekKit", targets: ["NintekKit"]),
+        .library(name: "NintekKitCairn", targets: ["NintekKitCairn"]),
     ],
     targets: [
-        .target(name: "NintekKit"),
+        .target(
+            name: "NintekKitCairn",
+            resources: [.process("PrivacyInfo.xcprivacy")]
+        ),
+        .target(name: "NintekKit", dependencies: ["NintekKitCairn"]),
+        .testTarget(name: "NintekKitCairnTests", dependencies: ["NintekKitCairn"]),
         .testTarget(name: "NintekKitTests", dependencies: ["NintekKit"]),
     ]
 )
