@@ -63,7 +63,7 @@ public enum ToolCondition: String, Sendable {
 
 /// One image attached to a tool. The bytes are fetched separately from
 /// `/api/tools/images/:id` (native sends a Bearer header). `imageSize` is used
-/// as a cache-busting `?v=` param.
+/// as a cache-busting `?media_v=` param.
 public struct ToolImage: Codable, Identifiable, Sendable, Equatable {
     public let id: Int
     public var imageName: String?

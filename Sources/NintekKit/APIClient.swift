@@ -103,7 +103,8 @@ public struct APIClient: Sendable {
         onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> Data {
         let token = try await tokenProvider.accessToken()
-        let request = makeRequest(method: "GET", path: path, token: token, body: nil)
+        var request = makeRequest(method: "GET", path: path, token: token, body: nil)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         if let onProgress {
             return try await Self.streamData(request, onProgress: onProgress)
         }
@@ -126,7 +127,11 @@ public struct APIClient: Sendable {
         onProgress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws -> Data {
         let delegate = DownloadProgressDelegate(onProgress: onProgress)
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let session = URLSession(
+            configuration: rawDataSessionConfiguration(),
+            delegate: delegate,
+            delegateQueue: nil
+        )
         defer { session.finishTasksAndInvalidate() }
         let task = session.dataTask(with: request)
         return try await withTaskCancellationHandler {
@@ -137,6 +142,13 @@ public struct APIClient: Sendable {
         } onCancel: {
             task.cancel()
         }
+    }
+
+    static func rawDataSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return configuration
     }
 
     // MARK: Multipart
