@@ -19,7 +19,7 @@ final class ShopKeepAPITests: XCTestCase {
         let request = try XCTUnwrap(captured)
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://shopkeep.example/api/tools/images/42?media_v=12345"
+            "https://shopkeep.example/api/tools/images/42?v=private-v2-12345"
         )
         assertBearerOnlyPrivateMediaRequest(request)
     }
@@ -37,7 +37,7 @@ final class ShopKeepAPITests: XCTestCase {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
 
         XCTAssertEqual(components?.path, "/api/tools/images/42")
-        XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "media_v", value: "12345")])
+        XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "v", value: "private-v2-12345")])
         XCTAssertFalse(components?.queryItems?.contains(where: { $0.name == "oid" }) ?? false)
     }
 
