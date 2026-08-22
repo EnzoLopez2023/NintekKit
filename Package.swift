@@ -2,8 +2,9 @@
 import PackageDescription
 
 // NintekKit — dependency-free shared infrastructure for Enzo's native apps.
-// Cairn links the local-only NintekKitCairn product; the original NintekKit
-// product remains the source-compatible aggregate for existing consumers.
+// Cairn links the local-only NintekKitCairn product, and Tare links the
+// local-only NintekKitTare product; the original NintekKit product remains
+// the source-compatible aggregate for existing consumers.
 let package = Package(
     name: "NintekKit",
     platforms: [
@@ -18,14 +19,20 @@ let package = Package(
     products: [
         .library(name: "NintekKit", targets: ["NintekKit"]),
         .library(name: "NintekKitCairn", targets: ["NintekKitCairn"]),
+        .library(name: "NintekKitTare", targets: ["NintekKitTare"]),
     ],
     targets: [
         .target(
             name: "NintekKitCairn",
             resources: [.process("PrivacyInfo.xcprivacy")]
         ),
-        .target(name: "NintekKit", dependencies: ["NintekKitCairn"]),
+        .target(
+            name: "NintekKitTare",
+            resources: [.process("PrivacyInfo.xcprivacy")]
+        ),
+        .target(name: "NintekKit", dependencies: ["NintekKitCairn", "NintekKitTare"]),
         .testTarget(name: "NintekKitCairnTests", dependencies: ["NintekKitCairn"]),
+        .testTarget(name: "NintekKitTareTests", dependencies: ["NintekKitTare"]),
         .testTarget(name: "NintekKitTests", dependencies: ["NintekKit"]),
     ]
 )

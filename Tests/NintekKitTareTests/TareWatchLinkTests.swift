@@ -1,5 +1,5 @@
 import XCTest
-@testable import NintekKit
+@testable import NintekKitTare
 
 /// Tests for the phone ⇄ watch contract. `WCSession` itself is not exercised —
 /// it needs a paired device — so what is proven here is the part that can break
