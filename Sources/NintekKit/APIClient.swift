@@ -9,6 +9,45 @@ public protocol HTTPTransport: Sendable {
 
 extension URLSession: HTTPTransport {}
 
+/// Disk-download transport seam. Production uses `URLSession.download`, which
+/// writes response bytes to a temporary file instead of accumulating `Data`.
+public protocol HTTPDownloadTransport: Sendable {
+    func downloadFile(for request: URLRequest) async throws -> (URL, URLResponse)
+}
+
+extension URLSession: HTTPDownloadTransport {
+    public func downloadFile(for request: URLRequest) async throws -> (URL, URLResponse) {
+        try await download(for: request)
+    }
+}
+
+/// File-backed upload seam. Production sends the multipart body with
+/// `URLSession.upload(for:fromFile:)`, keeping large files off the heap.
+public protocol HTTPFileUploadTransport: Sendable {
+    func uploadFile(
+        for request: URLRequest,
+        fromFile fileURL: URL,
+        onProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> (Data, URLResponse)
+}
+
+extension URLSession: HTTPFileUploadTransport {
+    public func uploadFile(
+        for request: URLRequest,
+        fromFile fileURL: URL,
+        onProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> (Data, URLResponse) {
+        guard let onProgress else {
+            return try await upload(for: request, fromFile: fileURL)
+        }
+
+        let delegate = UploadProgressDelegate(onProgress: onProgress)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await session.upload(for: request, fromFile: fileURL)
+    }
+}
+
 /// Minimal async JSON client. Injects the bearer token from a ``TokenProvider``
 /// on every request and maps failures onto ``APIError``. This is the exact
 /// native counterpart of the web app's `apiFetch` wrapper — same base origin,
@@ -17,6 +56,8 @@ public struct APIClient: Sendable {
     public let baseURL: URL
     private let tokenProvider: TokenProvider
     private let transport: HTTPTransport
+    private let downloadTransport: HTTPDownloadTransport
+    private let fileUploadTransport: HTTPFileUploadTransport
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
@@ -25,13 +66,17 @@ public struct APIClient: Sendable {
         tokenProvider: TokenProvider,
         transport: HTTPTransport = URLSession.shared,
         decoder: JSONDecoder = JSONDecoder(),
-        encoder: JSONEncoder = JSONEncoder()
+        encoder: JSONEncoder = JSONEncoder(),
+        downloadTransport: HTTPDownloadTransport = URLSession.shared,
+        fileUploadTransport: HTTPFileUploadTransport = URLSession.shared
     ) {
         self.baseURL = baseURL
         self.tokenProvider = tokenProvider
         self.transport = transport
         self.decoder = decoder
         self.encoder = encoder
+        self.downloadTransport = downloadTransport
+        self.fileUploadTransport = fileUploadTransport
     }
 
     // MARK: Requests
@@ -116,6 +161,70 @@ public struct APIClient: Sendable {
             throw APIError.http(status: http.statusCode, message: nil)
         }
         return data
+    }
+
+    /// Downloads an authenticated response to disk without buffering the file in
+    /// memory. The final install is an atomic move or replacement at `destinationURL`.
+    public func download(_ path: String, to destinationURL: URL) async throws {
+        try Task.checkCancellation()
+        let token = try await tokenProvider.accessToken()
+        try Task.checkCancellation()
+
+        var request = makeRequest(method: "GET", path: path, token: token, body: nil)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+
+        let temporaryURL: URL
+        let response: URLResponse
+        do {
+            (temporaryURL, response) = try await downloadTransport.downloadFile(for: request)
+        } catch {
+            if error is CancellationError
+                || (error as? URLError)?.code == .cancelled
+                || Task.isCancelled {
+                throw CancellationError()
+            }
+            throw APIError.transport(error.localizedDescription)
+        }
+
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        try Task.checkCancellation()
+
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.transport("Non-HTTP response.")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            if http.statusCode == 401 { throw APIError.unauthorized }
+            throw APIError.http(status: http.statusCode, message: nil)
+        }
+
+        try Self.installDownloadedFile(from: temporaryURL, to: destinationURL)
+    }
+
+    private static func installDownloadedFile(from sourceURL: URL, to destinationURL: URL) throws {
+        let fileManager = FileManager.default
+        let directoryURL = destinationURL.deletingLastPathComponent()
+        let stagingURL = directoryURL.appendingPathComponent(
+            ".\(destinationURL.lastPathComponent).\(UUID().uuidString).download"
+        )
+        defer { try? fileManager.removeItem(at: stagingURL) }
+
+        // Staging beside the destination keeps the final move on one volume.
+        try fileManager.copyItem(at: sourceURL, to: stagingURL)
+        try Task.checkCancellation()
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            // Default replacement keeps the destination's metadata when possible,
+            // including its existing file-protection attributes.
+            _ = try fileManager.replaceItemAt(
+                destinationURL,
+                withItemAt: stagingURL,
+                backupItemName: nil,
+                options: []
+            )
+        } else {
+            try fileManager.moveItem(at: stagingURL, to: destinationURL)
+        }
     }
 
     /// Runs `request` on a dedicated session whose delegate accumulates the body
@@ -211,6 +320,179 @@ public struct APIClient: Sendable {
         catch { throw APIError.decoding(String(describing: error)) }
     }
 
+    /// File-backed multipart upload for large payloads. The source is copied into
+    /// a private temporary multipart file in bounded chunks, then URLSession
+    /// uploads that file directly.
+    @discardableResult
+    public func postMultipartFile<Response: Decodable>(
+        _ path: String,
+        fields: [String: String] = [:],
+        sourceFileURL: URL,
+        fieldName: String = "file",
+        filename: String,
+        mimeType: String,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        as type: Response.Type = Response.self
+    ) async throws -> Response {
+        try Task.checkCancellation()
+        let token = try await tokenProvider.accessToken()
+        try Task.checkCancellation()
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let stagingTask = Task.detached(priority: .utility) {
+            try Self.makeMultipartFile(
+                fields: fields,
+                sourceFileURL: sourceFileURL,
+                fieldName: fieldName,
+                filename: filename,
+                mimeType: mimeType,
+                boundary: boundary
+            )
+        }
+        let multipartURL = try await withTaskCancellationHandler {
+            try await stagingTask.value
+        } onCancel: {
+            stagingTask.cancel()
+        }
+        defer { try? FileManager.default.removeItem(at: multipartURL) }
+        try Task.checkCancellation()
+
+        var request = makeRequest(method: "POST", path: path, token: token, body: nil)
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await fileUploadTransport.uploadFile(
+                for: request,
+                fromFile: multipartURL,
+                onProgress: onProgress
+            )
+        } catch {
+            if error is CancellationError
+                || (error as? URLError)?.code == .cancelled
+                || Task.isCancelled {
+                throw CancellationError()
+            }
+            throw APIError.transport(error.localizedDescription)
+        }
+
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.transport("Non-HTTP response.")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            if http.statusCode == 401 { throw APIError.unauthorized }
+            throw APIError.http(status: http.statusCode, message: Self.serverMessage(from: data))
+        }
+        if Response.self == EmptyResponse.self { return EmptyResponse() as! Response }
+        do { return try decoder.decode(Response.self, from: data) }
+        catch { throw APIError.decoding(String(describing: error)) }
+    }
+
+    private static func makeMultipartFile(
+        fields: [String: String],
+        sourceFileURL: URL,
+        fieldName: String,
+        filename: String,
+        mimeType: String,
+        boundary: String
+    ) throws -> URL {
+        guard sourceFileURL.isFileURL else {
+            throw CocoaError(.fileReadUnsupportedScheme, userInfo: [NSURLErrorKey: sourceFileURL])
+        }
+
+        let escapedFieldName = try multipartQuotedValue(fieldName, label: "field name")
+        let escapedFilename = try multipartQuotedValue(filename, label: "filename")
+        let escapedFields = try fields.map { name, value in
+            (try multipartQuotedValue(name, label: "field name"), value)
+        }
+        try validateMultipartHeaderToken(mimeType, label: "MIME type")
+
+        let fileManager = FileManager.default
+        let multipartURL = fileManager.temporaryDirectory
+            .appendingPathComponent("NintekKit-\(UUID().uuidString).multipart")
+        guard fileManager.createFile(
+            atPath: multipartURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: multipartURL])
+        }
+
+        var completed = false
+        defer {
+            if !completed {
+                try? fileManager.removeItem(at: multipartURL)
+            }
+        }
+
+        let input = try FileHandle(forReadingFrom: sourceFileURL)
+        defer { try? input.close() }
+        let output = try FileHandle(forWritingTo: multipartURL)
+        defer { try? output.close() }
+
+        func write(_ string: String) throws {
+            try output.write(contentsOf: Data(string.utf8))
+        }
+
+        let crlf = "\r\n"
+        for (escapedName, value) in escapedFields {
+            try Task.checkCancellation()
+            try write("--\(boundary)\(crlf)")
+            try write("Content-Disposition: form-data; name=\"\(escapedName)\"\(crlf)\(crlf)")
+            try write("\(value)\(crlf)")
+        }
+
+        try write("--\(boundary)\(crlf)")
+        try write(
+            "Content-Disposition: form-data; name=\"\(escapedFieldName)\"; " +
+            "filename=\"\(escapedFilename)\"\(crlf)"
+        )
+        try write("Content-Type: \(mimeType)\(crlf)\(crlf)")
+
+        let chunkSize = 1_048_576
+        while true {
+            try Task.checkCancellation()
+            guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else { break }
+            try output.write(contentsOf: chunk)
+        }
+
+        try write(crlf)
+        try write("--\(boundary)--\(crlf)")
+        try output.close()
+        try input.close()
+        completed = true
+        return multipartURL
+    }
+
+    private static func multipartQuotedValue(_ value: String, label: String) throws -> String {
+        try validateMultipartHeaderValue(value, label: label)
+        return value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func validateMultipartHeaderValue(_ value: String, label: String) throws {
+        let containsLineBreak = value.unicodeScalars.contains {
+            $0.value == 0x0A || $0.value == 0x0D
+        }
+        guard !containsLineBreak else {
+            throw MultipartHeaderError(
+                label: label,
+                reason: "must not contain carriage returns or line feeds"
+            )
+        }
+    }
+
+    private static func validateMultipartHeaderToken(_ value: String, label: String) throws {
+        try validateMultipartHeaderValue(value, label: label)
+        guard !value.contains("\"") else {
+            throw MultipartHeaderError(label: label, reason: "must not contain quotes")
+        }
+    }
+
     // MARK: Core
 
     /// Builds a request against `baseURL`, attaches the bearer token, performs
@@ -225,6 +507,7 @@ public struct APIClient: Sendable {
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -268,6 +551,15 @@ public struct APIClient: Sendable {
     private static func serverMessage(from data: Data) -> String? {
         struct ErrorBody: Decodable { let error: String }
         return (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error
+    }
+}
+
+private struct MultipartHeaderError: LocalizedError, Sendable {
+    let label: String
+    let reason: String
+
+    var errorDescription: String? {
+        "Multipart \(label) \(reason)."
     }
 }
 

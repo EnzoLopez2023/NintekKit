@@ -19,13 +19,17 @@ public struct WorkshopAPI: Sendable {
 
     public init(baseURL: URL = WorkshopAPI.productionBaseURL,
                 tokenProvider: TokenProvider,
-                transport: HTTPTransport = URLSession.shared) {
+                transport: HTTPTransport = URLSession.shared,
+                downloadTransport: HTTPDownloadTransport = URLSession.shared,
+                fileUploadTransport: HTTPFileUploadTransport = URLSession.shared) {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         self.client = APIClient(baseURL: baseURL, tokenProvider: tokenProvider,
-                                transport: transport, decoder: decoder, encoder: encoder)
+                                transport: transport, decoder: decoder, encoder: encoder,
+                                downloadTransport: downloadTransport,
+                                fileUploadTransport: fileUploadTransport)
     }
 
     /// Backend origin — used to build image URLs.
@@ -38,6 +42,20 @@ public struct WorkshopAPI: Sendable {
     /// bearer token; there is deliberately no user-id parameter.
     public func deleteAccount() async throws {
         try await client.delete("/api/account", as: EmptyResponse.self)
+    }
+
+    // MARK: Provider connections
+
+    public func providerConnections() async throws -> ProviderConnectionsResponse {
+        try await client.get("/api/provider-connections")
+    }
+    @discardableResult
+    public func saveThingiverseToken(_ token: String) async throws -> ThingiverseConnectionStatus {
+        try await client.put("/api/provider-connections/thingiverse", body: ThingiverseTokenBody(token: token))
+    }
+    @discardableResult
+    public func deleteThingiverseToken() async throws -> ThingiverseConnectionStatus {
+        try await client.delete("/api/provider-connections/thingiverse")
     }
 
     // MARK: Projects
@@ -168,6 +186,64 @@ public struct WorkshopAPI: Sendable {
         try await client.post("/api/shaper-projects/\(shaperProjectId)/cut-list", body: item)
     }
 
+    // MARK: Bambu Hub projects
+
+    public func listBambuProjects() async throws -> [BambuProject] {
+        try await client.get("/api/bambu-projects")
+    }
+    public func bambuProject(id: Int) async throws -> BambuProject {
+        try await client.get("/api/bambu-projects/\(id)")
+    }
+    public func analyzeBambuURL(_ url: String) async throws -> BambuAnalysisResult {
+        try await client.post("/api/bambu-projects/analyze-url", body: URLBody(url: url))
+    }
+    @discardableResult
+    public func createBambuProject(_ input: BambuProjectInput) async throws -> BambuImportResult {
+        try await client.post("/api/bambu-projects", body: input)
+    }
+    @discardableResult
+    public func updateBambuProject(id: Int, _ input: BambuProjectInput) async throws -> BambuProject {
+        try await client.put("/api/bambu-projects/\(id)", body: input)
+    }
+    public func deleteBambuProject(id: Int) async throws {
+        try await client.delete("/api/bambu-projects/\(id)", as: EmptyResponse.self)
+    }
+
+    @discardableResult
+    public func uploadBambuAsset(bambuProjectId: Int, file: MultipartFile,
+                                 onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> BambuAsset {
+        try await client.postMultipart("/api/bambu-projects/\(bambuProjectId)/assets",
+                                       file: file, onProgress: onProgress)
+    }
+    @discardableResult
+    public func uploadBambuAssetFile(
+        bambuProjectId: Int,
+        sourceFileURL: URL,
+        filename: String,
+        mimeType: String,
+        onProgress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> BambuAsset {
+        try await client.postMultipartFile(
+            "/api/bambu-projects/\(bambuProjectId)/assets",
+            sourceFileURL: sourceFileURL,
+            filename: filename,
+            mimeType: mimeType,
+            onProgress: onProgress
+        )
+    }
+    public func deleteBambuAsset(id: Int) async throws {
+        try await client.delete("/api/bambu-assets/\(id)", as: EmptyResponse.self)
+    }
+
+    /// Auth-exempt image URL. Non-image assets are only available via the
+    /// authenticated `downloadBambuAsset(id:to:)` method.
+    public func bambuAssetURL(assetId: Int, userKey: String) -> URL {
+        oidURL(path: "/api/bambu-assets/\(assetId)/image", userKey: userKey)
+    }
+    public func downloadBambuAsset(id: Int, to destinationURL: URL) async throws {
+        try await client.download("/api/bambu-assets/\(id)", to: destinationURL)
+    }
+
     // MARK: Build log
 
     /// Auth-exempt build-log photo URL (`?oid=` like images).
@@ -234,13 +310,18 @@ public struct WorkshopAPI: Sendable {
     // MARK: Helpers
 
     private func oidURL(path: String, userKey: String) -> URL {
+        userKeyURL(path: path, queryName: "oid", userKey: userKey)
+    }
+
+    private func userKeyURL(path: String, queryName: String, userKey: String) -> URL {
         var comps = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
-        comps?.queryItems = [URLQueryItem(name: "oid", value: userKey)]
+        comps?.queryItems = [URLQueryItem(name: queryName, value: userKey)]
         return comps?.url ?? baseURL
     }
 
     // Request-body shapes (encoded snake_case unless noted).
     private struct URLBody: Encodable { let url: String }
+    private struct ThingiverseTokenBody: Encodable { let token: String }
     private struct KindURLBody: Encodable { let kind: String; let url: String }
     private struct PurchasedBody: Encodable { let purchased: Bool }
     private struct LinkBody: Encodable { let linkedProjectId: Int; let relationship: String }

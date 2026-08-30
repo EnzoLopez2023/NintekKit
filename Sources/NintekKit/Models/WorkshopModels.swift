@@ -65,6 +65,31 @@ public enum ImageKind: String, Codable, Sendable {
     }
 }
 
+// MARK: - Provider connections
+
+/// Where Workshop found a usable Thingiverse API token.
+public enum ThingiverseConnectionSource: String, Codable, Sendable, CaseIterable {
+    case account, server, none
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ThingiverseConnectionSource(rawValue: raw) ?? .unknown
+    }
+}
+
+/// Connection metadata only. Provider tokens are write-only and never modeled
+/// in API responses.
+public struct ThingiverseConnectionStatus: Codable, Sendable, Equatable {
+    public let connected: Bool
+    public let source: ThingiverseConnectionSource
+    public let storageConfigured: Bool
+}
+
+public struct ProviderConnectionsResponse: Codable, Sendable, Equatable {
+    public let thingiverse: ThingiverseConnectionStatus
+}
+
 // MARK: - Project (list row + bare create/update response)
 
 /// A project as returned by `GET /api/projects` (list) and by create/update
@@ -266,6 +291,80 @@ public struct ShaperProject: Codable, Identifiable, Sendable, Equatable {
     }
 }
 
+// MARK: - Bambu Hub projects
+
+/// The public model library that supplied an imported Bambu project.
+public enum BambuSourceSite: String, Codable, Sendable, CaseIterable {
+    case makerworld, thingiverse, printables
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BambuSourceSite(rawValue: raw) ?? .unknown
+    }
+}
+
+/// The type of file persisted for a Bambu project.
+public enum BambuAssetKind: String, Codable, Sendable, CaseIterable {
+    case image, model, file
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BambuAssetKind(rawValue: raw) ?? .unknown
+    }
+}
+
+public struct BambuAsset: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let bambuProjectId: Int
+    public let kind: BambuAssetKind
+    public let filename: String
+    public let contentType: String
+    public let sizeBytes: Int
+    public let originalUrl: String
+    public let sortOrder: Int
+}
+
+/// An imported 3D model library project. List responses omit `assets`, while a
+/// bare update response may also omit the aggregate counts.
+public struct BambuProject: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let title: String
+    public let sourceUrl: String
+    public let sourceSite: BambuSourceSite
+    public let sourceModelId: String?
+    public var description: String?
+    public var creatorName: String?
+    public var licenseName: String?
+    public let importWarnings: [String]
+    public let assets: [BambuAsset]
+    public let imageCount: Int
+    public let fileCount: Int
+    public var heroAssetId: Int?
+    public let createdAt: String
+    public let updatedAt: String
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        sourceUrl = try c.decode(String.self, forKey: .sourceUrl)
+        sourceSite = try c.decode(BambuSourceSite.self, forKey: .sourceSite)
+        sourceModelId = try c.decodeIfPresent(String.self, forKey: .sourceModelId)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        creatorName = try c.decodeIfPresent(String.self, forKey: .creatorName)
+        licenseName = try c.decodeIfPresent(String.self, forKey: .licenseName)
+        importWarnings = try c.decodeIfPresent([String].self, forKey: .importWarnings) ?? []
+        assets = try c.decodeIfPresent([BambuAsset].self, forKey: .assets) ?? []
+        imageCount = try c.decodeIfPresent(Int.self, forKey: .imageCount) ?? 0
+        fileCount = try c.decodeIfPresent(Int.self, forKey: .fileCount) ?? 0
+        heroAssetId = try c.decodeIfPresent(Int.self, forKey: .heroAssetId)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        updatedAt = try c.decode(String.self, forKey: .updatedAt)
+    }
+}
+
 // MARK: - Write payloads
 
 /// Body for `POST`/`PUT /api/projects`. Encoded to snake_case by WorkshopAPI.
@@ -363,6 +462,24 @@ public struct ShaperProjectInput: Codable, Sendable, Equatable {
     }
 }
 
+/// Body for `POST`/`PUT /api/bambu-projects`.
+public struct BambuProjectInput: Codable, Sendable, Equatable {
+    public var title: String
+    public var sourceUrl: String
+    public var description: String?
+    public var creatorName: String?
+    public var licenseName: String?
+
+    public init(title: String = "", sourceUrl: String = "", description: String? = nil,
+                creatorName: String? = nil, licenseName: String? = nil) {
+        self.title = title
+        self.sourceUrl = sourceUrl
+        self.description = description
+        self.creatorName = creatorName
+        self.licenseName = licenseName
+    }
+}
+
 // MARK: - AI analyze results
 
 /// `POST /api/projects/analyze-url` — suggested fields to prefill the form.
@@ -397,6 +514,47 @@ public struct ShaperAnalysisResult: Codable, Sendable, Equatable {
     public let materials: [ShaperMaterial]
     public let instructions: String
     public var imageUrls: [String]?
+}
+
+public struct BambuAnalysisFile: Codable, Sendable, Equatable {
+    public let filename: String
+    public let kind: BambuAssetKind
+}
+
+/// Parsed public metadata and downloadable-file manifest returned before import.
+public struct BambuAnalysisResult: Codable, Sendable, Equatable {
+    public let sourceSite: BambuSourceSite
+    public let sourceModelId: String?
+    public let title: String
+    public let description: String
+    public let creatorName: String?
+    public let licenseName: String?
+    public let previewImageUrl: String?
+    public let imageCount: Int
+    public let fileCount: Int
+    public let files: [BambuAnalysisFile]
+    public let warnings: [String]
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sourceSite = try c.decode(BambuSourceSite.self, forKey: .sourceSite)
+        sourceModelId = try c.decodeIfPresent(String.self, forKey: .sourceModelId)
+        title = try c.decode(String.self, forKey: .title)
+        description = try c.decode(String.self, forKey: .description)
+        creatorName = try c.decodeIfPresent(String.self, forKey: .creatorName)
+        licenseName = try c.decodeIfPresent(String.self, forKey: .licenseName)
+        previewImageUrl = try c.decodeIfPresent(String.self, forKey: .previewImageUrl)
+        imageCount = try c.decode(Int.self, forKey: .imageCount)
+        fileCount = try c.decode(Int.self, forKey: .fileCount)
+        files = try c.decode([BambuAnalysisFile].self, forKey: .files)
+        warnings = try c.decodeIfPresent([String].self, forKey: .warnings) ?? []
+    }
+}
+
+/// A persisted import plus non-fatal failures for individual asset downloads.
+public struct BambuImportResult: Codable, Sendable, Equatable {
+    public let project: BambuProject
+    public let warnings: [String]
 }
 
 // MARK: - Cut-plan config (camelCase — NOT snake_case)
