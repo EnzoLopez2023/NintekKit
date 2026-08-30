@@ -174,7 +174,7 @@ public struct ShopKeepAPI: Sendable {
     /// the web `?oid=` param).
     public func imageData(_ image: ToolImage) async throws -> Data {
         var path = "/api/tools/images/\(image.id)"
-        if let size = image.imageSize { path += "?v=\(size)" }
+        if let size = image.imageSize { path += "?v=private-v2-\(size)" }
         return try await client.getData(path)
     }
 
@@ -184,7 +184,7 @@ public struct ShopKeepAPI: Sendable {
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/tools/images/\(image.id)"),
                                   resolvingAgainstBaseURL: false)
         if let size = image.imageSize {
-            comps?.queryItems = [URLQueryItem(name: "v", value: String(size))]
+            comps?.queryItems = [URLQueryItem(name: "v", value: "private-v2-\(size)")]
         }
         return comps?.url ?? baseURL
     }

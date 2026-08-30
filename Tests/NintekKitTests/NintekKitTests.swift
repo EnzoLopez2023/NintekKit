@@ -21,6 +21,21 @@ final class NintekKitTests: XCTestCase {
         XCTAssertTrue(snapshot.studiedToday)
     }
 
+    /// `NintekKitTare` is a dedicated product now, but every symbol it exports
+    /// must still resolve through the aggregate `import NintekKit` — Cairn,
+    /// ShopKeep, and Workshop consumers link the aggregate, not the split
+    /// product, and this must not become a breaking change for them.
+    func testTareSurfaceRemainsReexported() {
+        let _: NintekKit.TareWidgetSnapshot.Type = TareWidgetSnapshot.self
+        let _: NintekKit.TareWidgetStore.Type = TareWidgetStore.self
+        let _: NintekKit.TareWatchLogEntry.Type = TareWatchLogEntry.self
+        let _: NintekKit.TareWatchPayload.Type = TareWatchPayload.self
+        let _: NintekKit.TareDoseActivityWindow.Type = TareDoseActivityWindow.self
+        let snapshot: NintekKit.TareWidgetSnapshot = TareWidgetSnapshot.sample
+        XCTAssertNotNil(snapshot.doseMg)
+        XCTAssertEqual(TareWidgetStore.appGroup, "group.com.nintek.tare")
+    }
+
     func testDecodesDashboardStats() throws {
         let json = #"{"total_tools":433,"needs_attention":3,"checked_out":0,"total_value":53976.5}"#
         let stats = try skDecoder.decode(DashboardStats.self, from: Data(json.utf8))

@@ -1,5 +1,5 @@
 import XCTest
-@testable import NintekKit
+@testable import NintekKitTare
 
 /// Tests for Tare's widget snapshot. The App Group store itself is exercised
 /// only as a round-trip: `UserDefaults(suiteName:)` returns `nil` in a plain

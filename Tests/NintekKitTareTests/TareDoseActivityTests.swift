@@ -1,5 +1,5 @@
 import XCTest
-@testable import NintekKit
+@testable import NintekKitTare
 
 /// The dose-day Live Activity's window and labels.
 ///
