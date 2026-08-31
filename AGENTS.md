@@ -12,16 +12,34 @@ Dependency-free Swift 6 shared package: shared models, API clients, App Intents,
 
 **If any document or marketing page describes NintekKit as a design-token or theming package, the code is ground truth.**
 
-## Related surfaces — consumed by exactly four apps
+## Active consumers — exactly three apps
 
 - [CairnNative](https://github.com/EnzoLopez2023/CairnNative)
 - [ShopKeepNative](https://github.com/EnzoLopez2023/ShopKeepNative)
-- [Workshop-for-iOS](https://github.com/EnzoLopez2023/Workshop-for-iOS)
 - [Tare-for-iOS](https://github.com/EnzoLopez2023/Tare-for-iOS)
 
-Also relevant: [workshop](https://github.com/EnzoLopez2023/workshop) (React web) owns the JS original of the cut-plan optimiser.
+## Historical Workshop compatibility
+
+[Workshop-for-iOS](https://github.com/EnzoLopez2023/Workshop-for-iOS) is retired,
+archived/read-only, TestFlight-only, and was never publicly released. Its final
+retirement state is
+[`bcf46a91`](https://github.com/EnzoLopez2023/Workshop-for-iOS/commit/bcf46a91cdbc95b2b1c0e4a5c585c76369051828);
+the final functional source is
+[`5be54652`](https://github.com/EnzoLopez2023/Workshop-for-iOS/commit/5be546524e79b9c63b2a4effb5ec24e03fe6d777),
+version 2.3.0 (15).
+
+[Workshop web](https://github.com/EnzoLopez2023/workshop) is canonical and no
+longer creates an active native parity or propagation obligation. NintekKit
+nevertheless retains all existing `WorkshopAPI` public methods, Workshop models,
+Bambu models, and `CutPlan.swift` behavior, source, and tests as frozen
+compatibility/history. Do not delete, rename, deprecate, or change these APIs or
+sources, their behavior, or their tests: archived source/history and retained
+TestFlight installations may still depend on them.
 
 ## Propagation rule
 
-- **A breaking change here hits all four consumers — check every one.** There is no other safety net.
-- **`CutPlan.swift` must stay in parity with the Workshop web app's `src/lib/cutPlan.ts`** (including `parseInches` fraction parsing). The two are **unit-tested for exact-match layouts**. Change one, change the other, re-run the parity tests.
+- **A breaking change here hits all three active consumers — check every one.**
+  There is no other safety net.
+- Do not propagate Workshop web changes into the frozen native compatibility
+  surfaces, including `CutPlan.swift`; there is no longer an active web/native
+  parity requirement.
